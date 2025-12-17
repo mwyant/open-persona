@@ -1,0 +1,41 @@
+services:
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    volumes:
+      - open-webui:/app/backend/data
+
+  opencode:
+    image: ghcr.io/sst/opencode:latest
+    restart: unless-stopped
+    command: ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
+    environment:
+      # Configure providers by setting env vars here (PoC tradeoff A).
+      # Example:
+      # - ANTHROPIC_API_KEY=...
+      # - OPENAI_API_KEY=...
+      - XDG_CONFIG_HOME=/data/config
+      - XDG_STATE_HOME=/data/state
+    volumes:
+      - opencode-data:/data
+      - opencode-workspace:/workspace
+    working_dir: /workspace
+
+  open-persona-sidecar:
+    build:
+      context: ./services/open-persona-sidecar
+    restart: unless-stopped
+    environment:
+      - PORT=8000
+      - OPENCODE_BASE_URL=http://opencode:4096
+    ports:
+      - "8000:8000"
+    depends_on:
+      - opencode
+
+volumes:
+  open-webui:
+  opencode-data:
+  opencode-workspace:
