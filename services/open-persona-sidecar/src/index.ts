@@ -2,15 +2,29 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import Docker from "dockerode";
 import express from "express";
 
 const OPENCODE_BASE_URL = process.env.OPENCODE_BASE_URL ?? "http://opencode:4096";
 const PORT = Number(process.env.PORT ?? "8000");
 const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT ?? "/workspace/open-persona";
 
+const RUNNER_MODE = (process.env.RUNNER_MODE ?? "shared").toLowerCase();
+const RUNNER_NETWORK = process.env.RUNNER_NETWORK ?? "open-persona_default";
+const RUNNER_IMAGE = process.env.RUNNER_IMAGE ?? "ghcr.io/sst/opencode:latest";
+const WORKSPACE_VOLUME = process.env.WORKSPACE_VOLUME ?? "open-persona_open-persona-workspaces";
+const OPENCODE_DATA_VOLUME = process.env.OPENCODE_DATA_VOLUME ?? "open-persona_opencode-data";
+
 type OpenAIMessage = {
   role: "system" | "user" | "assistant" | "tool";
   content: unknown;
+};
+
+type OpenAIChatCompletionRequest = {
+  model?: string;
+  stream?: boolean;
+  user?: string;
+  messages?: OpenAIMessage[];
 };
 
 function coerceTextContent(content: unknown): string {
@@ -68,24 +82,71 @@ function getBearerToken(req: express.Request): string | undefined {
   return match[1]?.trim() || undefined;
 }
 
-function workspaceDirectoryForRequest(req: express.Request): string {
-  const token = getBearerToken(req) ?? "anonymous";
-  const hash = crypto.createHash("sha256").update(token, "utf8").digest("hex").slice(0, 16);
-  return path.posix.join(WORKSPACE_ROOT, hash);
+function workspaceKeyForRequest(req: express.Request, body: OpenAIChatCompletionRequest | undefined): string {
+  // Prefer an explicit user identifier if the caller provides one.
+  const headerUser =
+    req.header("x-openwebui-user-id") ??
+    req.header("x-open-webui-user-id") ??
+    req.header("x-openwebui-user") ??
+    req.header("x-open-webui-user") ??
+    req.header("x-forwarded-user") ??
+    undefined;
+
+  const bodyUser = typeof body?.user === "string" && body.user.trim() ? body.user.trim() : undefined;
+  const token = getBearerToken(req);
+
+  return headerUser ?? bodyUser ?? token ?? "anonymous";
+}
+
+function workspaceHashForKey(key: string): string {
+  return crypto.createHash("sha256").update(key, "utf8").digest("hex").slice(0, 16);
+}
+
+function workspaceDirectoryForKey(key: string): string {
+  return path.posix.join(WORKSPACE_ROOT, workspaceHashForKey(key));
 }
 
 function ensureDirectoryExists(dir: string) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
-function opencodeUrl(pathname: string, directory: string): string {
-  const url = new URL(pathname, OPENCODE_BASE_URL);
+function ensureOpencodeProjectConfig(directory: string): boolean {
+  const configPath = path.posix.join(directory, "opencode.jsonc");
+  if (fs.existsSync(configPath)) return false;
+
+  const config = `{
+  "$schema": "https://opencode.ai/config.json",
+  // Open Persona: run unattended inside isolated workspaces.
+  "permission": {
+    "edit": "allow",
+    "bash": "allow",
+    "webfetch": "allow",
+    "external_directory": "deny"
+  },
+  "agent": {
+    "plan": {
+      "permission": {
+        "edit": "deny",
+        "bash": "deny",
+        "webfetch": "allow"
+      }
+    }
+  }
+}
+`;
+
+  fs.writeFileSync(configPath, config, { encoding: "utf8" });
+  return true;
+}
+
+function opencodeUrl(opencodeBaseUrl: string, pathname: string, directory: string): string {
+  const url = new URL(pathname, opencodeBaseUrl);
   url.searchParams.set("directory", directory);
   return url.toString();
 }
 
-async function opencodeCreateSession(directory: string): Promise<{ id: string }> {
-  const res = await fetch(opencodeUrl("/session", directory), {
+async function opencodeCreateSession(opencodeBaseUrl: string, directory: string): Promise<{ id: string }> {
+  const res = await fetch(opencodeUrl(opencodeBaseUrl, "/session", directory), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ title: "Open WebUI" })
@@ -99,8 +160,15 @@ async function opencodeCreateSession(directory: string): Promise<{ id: string }>
   return (await res.json()) as { id: string };
 }
 
-async function opencodePrompt(directory: string, sessionID: string, agent: "build" | "plan", prompt: string, system?: string) {
-  const res = await fetch(opencodeUrl(`/session/${encodeURIComponent(sessionID)}/message`, directory), {
+async function opencodePrompt(
+  opencodeBaseUrl: string,
+  directory: string,
+  sessionID: string,
+  agent: "build" | "plan",
+  prompt: string,
+  system?: string
+) {
+  const res = await fetch(opencodeUrl(opencodeBaseUrl, `/session/${encodeURIComponent(sessionID)}/message`, directory), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -116,6 +184,105 @@ async function opencodePrompt(directory: string, sessionID: string, agent: "buil
   }
 
   return (await res.json()) as { info: unknown; parts: Array<any> };
+}
+
+function canUseRunnerContainers(): boolean {
+  if (RUNNER_MODE !== "container") return false;
+  try {
+    return fs.existsSync("/var/run/docker.sock");
+  } catch {
+    return false;
+  }
+}
+
+function dockerClient(): Docker | undefined {
+  if (!canUseRunnerContainers()) return undefined;
+  return new Docker({ socketPath: "/var/run/docker.sock" });
+}
+
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function waitForOpencodeServer(opencodeBaseUrl: string): Promise<void> {
+  const probeUrl = new URL("/config", opencodeBaseUrl).toString();
+  const maxAttempts = 20;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetchWithTimeout(probeUrl, 1500);
+      if (res.ok) return;
+    } catch {
+      // ignore
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+
+  throw new Error(`opencode runner not responding at ${opencodeBaseUrl}`);
+}
+
+async function ensureRunner(workspaceKey: string): Promise<{ opencodeBaseUrl: string; directory: string }> {
+  const directory = workspaceDirectoryForKey(workspaceKey);
+  ensureDirectoryExists(directory);
+  const createdConfig = ensureOpencodeProjectConfig(directory);
+
+  if (!canUseRunnerContainers()) {
+    return { opencodeBaseUrl: OPENCODE_BASE_URL, directory };
+  }
+
+  const hash = workspaceHashForKey(workspaceKey);
+  const name = `open-persona-runner-${hash}`;
+  const baseUrl = `http://${name}:4096`;
+
+  const docker = dockerClient();
+  if (!docker) return { opencodeBaseUrl: OPENCODE_BASE_URL, directory };
+
+  let container: Docker.Container;
+  try {
+    container = docker.getContainer(name);
+    await container.inspect();
+  } catch (err) {
+    const binds = [`${OPENCODE_DATA_VOLUME}:/data`, `${WORKSPACE_VOLUME}:/workspace/open-persona`];
+
+    container = await docker.createContainer({
+      name,
+      Image: RUNNER_IMAGE,
+      Cmd: ["serve", "--hostname", "0.0.0.0", "--port", "4096"],
+      WorkingDir: `/workspace/open-persona/${hash}`,
+      Env: [
+        `XDG_CONFIG_HOME=/data/config/${hash}`,
+        `XDG_STATE_HOME=/data/state/${hash}`,
+        // Allow provider keys to be injected at the stack level.
+        ...(process.env.ANTHROPIC_API_KEY ? [`ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY}`] : []),
+        ...(process.env.OPENAI_API_KEY ? [`OPENAI_API_KEY=${process.env.OPENAI_API_KEY}`] : [])
+      ],
+      Labels: {
+        "open-persona.runner": "true",
+        "open-persona.workspace": hash
+      },
+      HostConfig: {
+        NetworkMode: RUNNER_NETWORK,
+        Binds: binds,
+        RestartPolicy: { Name: "unless-stopped" }
+      }
+    });
+  }
+
+  const inspect = await container.inspect();
+  if (!inspect.State?.Running) {
+    await container.start();
+  } else if (createdConfig) {
+    // Config files are read on startup; restart to apply.
+    await container.restart();
+  }
+
+  await waitForOpencodeServer(baseUrl);
+  return { opencodeBaseUrl: baseUrl, directory };
 }
 
 function renderOpencodeParts(parts: Array<any>): string {
@@ -162,19 +329,20 @@ app.get("/v1/models", (_req, res) => {
 
 app.post("/v1/chat/completions", async (req, res) => {
   try {
-    const model = typeof req.body?.model === "string" ? (req.body.model as string) : undefined;
+    const body = (req.body ?? {}) as OpenAIChatCompletionRequest;
+    const model = typeof body.model === "string" ? body.model : undefined;
     const agent = agentFromModel(model);
-    const stream = Boolean(req.body?.stream);
+    const stream = Boolean(body.stream);
 
-    const rawMessages = Array.isArray(req.body?.messages) ? (req.body.messages as OpenAIMessage[]) : [];
+    const rawMessages = Array.isArray(body.messages) ? (body.messages as OpenAIMessage[]) : [];
     const system = extractSystem(rawMessages);
     const prompt = buildPrompt(rawMessages);
 
-    const directory = workspaceDirectoryForRequest(req);
-    ensureDirectoryExists(directory);
+    const workspaceKey = workspaceKeyForRequest(req, body);
+    const runner = await ensureRunner(workspaceKey);
 
-    const { id: sessionID } = await opencodeCreateSession(directory);
-    const opencodeResult = await opencodePrompt(directory, sessionID, agent, prompt, system);
+    const { id: sessionID } = await opencodeCreateSession(runner.opencodeBaseUrl, runner.directory);
+    const opencodeResult = await opencodePrompt(runner.opencodeBaseUrl, runner.directory, sessionID, agent, prompt, system);
 
     const content = renderOpencodeParts(opencodeResult.parts);
 

@@ -37,8 +37,17 @@ services:
       - PORT=8000
       - OPENCODE_BASE_URL=http://opencode:4096
       - WORKSPACE_ROOT=/workspace/open-persona
+      # Runner mode:
+      # - shared: use the single `opencode` service
+      # - container: spawn `opencode serve` runner containers (requires docker socket)
+      - RUNNER_MODE=container
+      - RUNNER_NETWORK=open-persona_default
+      - RUNNER_IMAGE=ghcr.io/sst/opencode:latest
+      - WORKSPACE_VOLUME=open-persona_open-persona-workspaces
+      - OPENCODE_DATA_VOLUME=open-persona_opencode-data
     volumes:
       - open-persona-workspaces:/workspace/open-persona
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8000:8000"
     depends_on:
