@@ -18,6 +18,7 @@ Not legal advice.
 ## Planned third-party components (likely)
 - Docker images and base OS layers (various licenses)
 - Node/TypeScript runtime deps for `open-persona-sidecar` (incl. `dockerode`)
+- Node/TypeScript runtime deps for `instrumentl-mcp` (incl. `@modelcontextprotocol/sdk`, `zod`)
 - Docker Engine API access when `RUNNER_MODE=container` (via `/var/run/docker.sock` mount)
 
 ## TODO

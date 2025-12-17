@@ -116,33 +116,158 @@ function ensureDirectoryExists(dir: string) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
-function ensureOpencodeProjectConfig(directory: string): boolean {
-  const configPath = path.posix.join(directory, "opencode.jsonc");
-  if (fs.existsSync(configPath)) return false;
-
-  const config = `{
-  "$schema": "https://opencode.ai/config.json",
-  // Open Persona: run unattended inside isolated workspaces.
-  "permission": {
-    "edit": "allow",
-    "bash": "allow",
-    "webfetch": "allow",
-    "external_directory": "deny"
-  },
-  "agent": {
-    "plan": {
-      "permission": {
-        "edit": "deny",
-        "bash": "deny",
-        "webfetch": "allow"
-      }
+type PersonaRegistry = {
+  version: 1;
+      personas: Record<
+    string,
+    {
+      originalModelId: string;
+      systemPrompt: string;
+      updatedAt: number;
+      features?: {
+        instrumentl?: boolean;
+      };
     }
+  >;
+};
+
+function personaRegistryPath(directory: string): string {
+  return path.posix.join(directory, ".open-persona", "personas.json");
+}
+
+function loadPersonaRegistry(directory: string): PersonaRegistry {
+  const p = personaRegistryPath(directory);
+  try {
+    const raw = fs.readFileSync(p, { encoding: "utf8" });
+    const parsed = JSON.parse(raw) as PersonaRegistry;
+    if (!parsed || typeof parsed !== "object") return { version: 1, personas: {} };
+    if (parsed.version !== 1) return { version: 1, personas: {} };
+    if (!parsed.personas || typeof parsed.personas !== "object") return { version: 1, personas: {} };
+    return parsed;
+  } catch {
+    return { version: 1, personas: {} };
   }
 }
-`;
 
-  fs.writeFileSync(configPath, config, { encoding: "utf8" });
+function savePersonaRegistry(directory: string, registry: PersonaRegistry) {
+  const p = personaRegistryPath(directory);
+  ensureDirectoryExists(path.posix.dirname(p));
+  fs.writeFileSync(p, JSON.stringify(registry, null, 2), { encoding: "utf8" });
+}
+
+function sanitizeAgentName(input: string): string {
+  const lower = input.toLowerCase();
+  const replaced = lower.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const trimmed = replaced.slice(0, 48);
+  return trimmed || "persona";
+}
+
+function writeFileIfChanged(filePath: string, content: string): boolean {
+  try {
+    const existing = fs.readFileSync(filePath, { encoding: "utf8" });
+    if (existing === content) return false;
+  } catch {
+    // ignore
+  }
+  fs.writeFileSync(filePath, content, { encoding: "utf8" });
   return true;
+}
+
+function buildOpencodeConfig(registry: PersonaRegistry): string {
+  const config: any = {
+    $schema: "https://opencode.ai/config.json",
+    permission: {
+      edit: "allow",
+      bash: "allow",
+      webfetch: "allow",
+      external_directory: "deny"
+    },
+    // Remote MCP servers (tools are disabled by default; enabled per persona).
+    mcp: {
+      instrumentl: {
+        type: "remote",
+        url: "http://instrumentl-mcp:7000/mcp",
+        enabled: true,
+        oauth: false
+      }
+    },
+    tools: {
+      "instrumentl*": false
+    },
+    agent: {
+      // Default agents used when no Persona model is selected.
+      build: {
+        prompt: "You are Open Persona (build mode). Execute changes when requested."
+      },
+      plan: {
+        prompt: "You are Open Persona (plan mode). Do not execute changes; propose a plan.",
+        permission: {
+          edit: "deny",
+          bash: "deny",
+          webfetch: "allow"
+        }
+      }
+    }
+  };
+
+  for (const [agentName, persona] of Object.entries(registry.personas)) {
+    const enableInstrumentl = Boolean(persona.features?.instrumentl);
+    const tools = enableInstrumentl ? { "instrumentl*": true } : undefined;
+
+    config.agent[agentName] = {
+      prompt: persona.systemPrompt,
+      ...(tools ? { tools } : {})
+    };
+
+    config.agent[`${agentName}__plan`] = {
+      prompt: `${persona.systemPrompt}\n\nYou are in plan mode. Do not run commands or edit files. Produce a plan only.`,
+      permission: {
+        edit: "deny",
+        bash: "deny",
+        webfetch: "allow"
+      },
+      ...(tools ? { tools } : {})
+    };
+  }
+
+  return JSON.stringify(config, null, 2) + "\n";
+}
+
+function updateOpencodeProjectConfig(
+  directory: string,
+  selectedPersona: { originalModelId: string; systemPrompt: string; features?: { instrumentl?: boolean } } | undefined
+): boolean {
+  const configPath = path.posix.join(directory, "opencode.jsonc");
+
+  const registry = loadPersonaRegistry(directory);
+  let updatedRegistry = false;
+
+  if (selectedPersona) {
+    const agentName = sanitizeAgentName(selectedPersona.originalModelId);
+    const now = Date.now();
+    const existing = registry.personas[agentName];
+
+    const incomingFeatures = selectedPersona.features ?? {};
+    if (
+      !existing ||
+      existing.systemPrompt !== selectedPersona.systemPrompt ||
+      existing.originalModelId !== selectedPersona.originalModelId ||
+      JSON.stringify(existing.features ?? {}) != JSON.stringify(incomingFeatures)
+    ) {
+      registry.personas[agentName] = {
+        originalModelId: selectedPersona.originalModelId,
+        systemPrompt: selectedPersona.systemPrompt,
+        updatedAt: now,
+        features: incomingFeatures
+      };
+      updatedRegistry = true;
+    }
+  }
+
+  if (updatedRegistry) savePersonaRegistry(directory, registry);
+
+  const config = buildOpencodeConfig(registry);
+  return writeFileIfChanged(configPath, config);
 }
 
 function opencodeUrl(opencodeBaseUrl: string, pathname: string, directory: string): string {
@@ -170,7 +295,7 @@ async function opencodePrompt(
   opencodeBaseUrl: string,
   directory: string,
   sessionID: string,
-  agent: "build" | "plan",
+  agent: string,
   prompt: string,
   system?: string
 ) {
@@ -289,13 +414,16 @@ async function waitForOpencodeServer(opencodeBaseUrl: string): Promise<void> {
   throw new Error(`opencode runner not responding at ${opencodeBaseUrl}`);
 }
 
-async function ensureRunner(workspaceKey: string): Promise<{ opencodeBaseUrl: string; directory: string }> {
+async function ensureRunner(
+  workspaceKey: string,
+  selectedPersona: { originalModelId: string; systemPrompt: string; features?: { instrumentl?: boolean } } | undefined
+): Promise<{ opencodeBaseUrl: string; directory: string; configChanged: boolean }> {
   const directory = workspaceDirectoryForKey(workspaceKey);
   ensureDirectoryExists(directory);
-  const createdConfig = ensureOpencodeProjectConfig(directory);
+  const configChanged = updateOpencodeProjectConfig(directory, selectedPersona);
 
   if (!canUseRunnerContainers()) {
-    return { opencodeBaseUrl: OPENCODE_BASE_URL, directory };
+    return { opencodeBaseUrl: OPENCODE_BASE_URL, directory, configChanged };
   }
 
   const hash = workspaceHashForKey(workspaceKey);
@@ -303,7 +431,7 @@ async function ensureRunner(workspaceKey: string): Promise<{ opencodeBaseUrl: st
   const baseUrl = `http://${name}:4096`;
 
   const docker = dockerClient();
-  if (!docker) return { opencodeBaseUrl: OPENCODE_BASE_URL, directory };
+  if (!docker) return { opencodeBaseUrl: OPENCODE_BASE_URL, directory, configChanged };
 
   let container: Docker.Container;
   try {
@@ -339,13 +467,13 @@ async function ensureRunner(workspaceKey: string): Promise<{ opencodeBaseUrl: st
   const inspect = await container.inspect();
   if (!inspect.State?.Running) {
     await container.start();
-  } else if (createdConfig) {
+  } else if (configChanged) {
     // Config files are read on startup; restart to apply.
     await container.restart();
   }
 
   await waitForOpencodeServer(baseUrl);
-  return { opencodeBaseUrl: baseUrl, directory };
+  return { opencodeBaseUrl: baseUrl, directory, configChanged };
 }
 
 function renderOpencodeParts(parts: Array<any>): string {
@@ -406,7 +534,45 @@ app.post("/v1/chat/completions", async (req, res) => {
       // eslint-disable-next-line no-console
       console.log(`workspace routing: source=${workspace.source} hash=${workspaceHashForKey(workspace.key)}`);
     }
-    const runner = await ensureRunner(workspace.key);
+    const headerOriginalModelId = req.header("x-openpersona-original-model-id")?.trim();
+    const headerSystemPrompt = req.header("x-openpersona-system-prompt")?.toString();
+    const headerMetaB64 = req.header("x-openpersona-meta-b64")?.toString();
+
+    let openPersonaMeta: any | undefined;
+    if (headerMetaB64) {
+      try {
+        const jsonStr = Buffer.from(headerMetaB64, "base64").toString("utf8");
+        openPersonaMeta = JSON.parse(jsonStr) as unknown;
+      } catch {
+        openPersonaMeta = undefined;
+      }
+    }
+
+    const enableInstrumentl = Boolean(openPersonaMeta?.integrations?.instrumentl?.enabled);
+
+    const isPersonaModel = Boolean(headerOriginalModelId && headerOriginalModelId !== model);
+    const selectedPersona = isPersonaModel
+      ? {
+          originalModelId: headerOriginalModelId as string,
+          systemPrompt: (headerSystemPrompt && headerSystemPrompt.trim()) || system || "",
+          features: {
+            instrumentl: enableInstrumentl
+          }
+        }
+      : undefined;
+
+    const runner = await ensureRunner(workspace.key, selectedPersona);
+
+    const personaAgentBase = selectedPersona ? sanitizeAgentName(selectedPersona.originalModelId) : undefined;
+    const selectedAgentName = personaAgentBase ? (agent === "plan" ? `${personaAgentBase}__plan` : personaAgentBase) : agent;
+
+    let forwardedSystem = system;
+    if (selectedPersona && headerSystemPrompt && forwardedSystem) {
+      const base = headerSystemPrompt.trim();
+      if (base && forwardedSystem.startsWith(base)) {
+        forwardedSystem = forwardedSystem.slice(base.length).trim() || undefined;
+      }
+    }
 
     const chatId = getOpenWebUIChatId(req);
     const title = chatId ? `Open WebUI ${chatId}` : "Open WebUI";
@@ -431,7 +597,7 @@ app.post("/v1/chat/completions", async (req, res) => {
 
     let opencodeResult: { info: unknown; parts: Array<any> };
     try {
-      opencodeResult = await opencodePrompt(runner.opencodeBaseUrl, runner.directory, sessionID, agent, prompt, system);
+      opencodeResult = await opencodePrompt(runner.opencodeBaseUrl, runner.directory, sessionID, selectedAgentName, prompt, forwardedSystem);
     } catch (err) {
       // If the session expired/was lost (runner restart), recreate once.
       if (!chatId) throw err;
@@ -445,7 +611,7 @@ app.post("/v1/chat/completions", async (req, res) => {
         return created.id;
       });
 
-      opencodeResult = await opencodePrompt(runner.opencodeBaseUrl, runner.directory, sessionID, agent, prompt, system);
+      opencodeResult = await opencodePrompt(runner.opencodeBaseUrl, runner.directory, sessionID, selectedAgentName, prompt, forwardedSystem);
     }
 
     const content = renderOpencodeParts(opencodeResult.parts);

@@ -1,0 +1,6 @@
+{
+  "command": "/instrumentl-rfp-search",
+  "title": "Instrumentl RFP Search",
+  "content": "You are running the /instrumentl-rfp-search workflow.\n\nGoal: find best-fit grants/RFPs using Instrumentl.\n\nInstructions:\n1) Ask for missing criteria ONLY if required to run a search (keep it minimal).\n2) Use the Instrumentl tool to search grants matching the criteria in the current conversation context.\n   - Start with a broad search and return the top 5-10 best matches.\n   - Use follow-up tool calls to fetch details for the most promising matches.\n3) Output a table: Title | Sponsor | Deadline | Amount | Link | Why it matches.\n4) Keep the output actionable and include hyperlinks when available.\n\nIf the Instrumentl integration is disabled or not configured, clearly say so and explain what setting is needed (without exposing secrets).",
+  "access_control": {}
+}

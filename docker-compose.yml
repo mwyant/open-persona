@@ -33,6 +33,17 @@ services:
       - open-persona-workspaces:/workspace/open-persona
     working_dir: /workspace/open-persona
 
+  instrumentl-mcp:
+    build:
+      context: ./services/instrumentl-mcp
+    restart: unless-stopped
+    environment:
+      - MCP_PORT=7000
+      # Placeholder; real key will be user-specific later.
+      - INSTRUMENTL_API_KEY=
+    ports:
+      - "7000:7000"
+
   open-persona-sidecar:
     build:
       context: ./services/open-persona-sidecar
@@ -57,6 +68,7 @@ services:
       - "8000:8000"
     depends_on:
       - opencode
+      - instrumentl-mcp
 
 volumes:
   open-webui:
