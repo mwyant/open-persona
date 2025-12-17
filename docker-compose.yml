@@ -2,6 +2,11 @@ services:
   openwebui:
     image: ghcr.io/open-webui/open-webui:main
     restart: unless-stopped
+    environment:
+      # Preconfigure the built-in OpenAI provider to use the sidecar.
+      # Open WebUI stores these in persistent config on first boot.
+      - OPENAI_API_BASE_URLS=http://open-persona-sidecar:8000/v1
+      - OPENAI_API_KEYS=sk-open-persona
     ports:
       - "3000:8080"
     volumes:
@@ -10,7 +15,8 @@ services:
   opencode:
     image: ghcr.io/sst/opencode:latest
     restart: unless-stopped
-    command: ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
+    # Image entrypoint is `opencode`, so command is subcommand args.
+    command: ["serve", "--hostname", "0.0.0.0", "--port", "4096"]
     environment:
       # Configure providers by setting env vars here (PoC tradeoff A).
       # Example:
