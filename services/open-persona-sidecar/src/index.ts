@@ -151,11 +151,11 @@ function opencodeUrl(opencodeBaseUrl: string, pathname: string, directory: strin
   return url.toString();
 }
 
-async function opencodeCreateSession(opencodeBaseUrl: string, directory: string): Promise<{ id: string }> {
+async function opencodeCreateSession(opencodeBaseUrl: string, directory: string, title: string): Promise<{ id: string }> {
   const res = await fetch(opencodeUrl(opencodeBaseUrl, "/session", directory), {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ title: "Open WebUI" })
+    body: JSON.stringify({ title })
   });
 
   if (!res.ok) {
@@ -190,6 +190,63 @@ async function opencodePrompt(
   }
 
   return (await res.json()) as { info: unknown; parts: Array<any> };
+}
+
+function getOpenWebUIChatId(req: express.Request): string | undefined {
+  const value = req.header("x-openwebui-chat-id") ?? req.header("x-open-webui-chat-id") ?? undefined;
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+type SessionMap = Record<string, string>;
+
+const sessionLocks = new Map<string, Promise<void>>();
+
+async function withSessionLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const tail = sessionLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const next = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const nextTail = tail.then(() => next);
+  sessionLocks.set(key, nextTail);
+
+  await tail;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (sessionLocks.get(key) === nextTail) {
+      sessionLocks.delete(key);
+    }
+  }
+}
+
+function sessionMapPath(directory: string): string {
+  return path.posix.join(directory, ".open-persona", "openwebui-sessions.json");
+}
+
+function loadSessionMap(directory: string): SessionMap {
+  const p = sessionMapPath(directory);
+  try {
+    const raw = fs.readFileSync(p, { encoding: "utf8" });
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as SessionMap;
+  } catch {
+    return {};
+  }
+}
+
+function saveSessionMap(directory: string, map: SessionMap) {
+  const p = sessionMapPath(directory);
+  ensureDirectoryExists(path.posix.dirname(p));
+  fs.writeFileSync(p, JSON.stringify(map, null, 2), { encoding: "utf8" });
+}
+
+function getExistingSessionId(directory: string, chatId: string | undefined, map: SessionMap): string | undefined {
+  return chatId ? map[chatId] : undefined;
 }
 
 function canUseRunnerContainers(): boolean {
@@ -351,8 +408,45 @@ app.post("/v1/chat/completions", async (req, res) => {
     }
     const runner = await ensureRunner(workspace.key);
 
-    const { id: sessionID } = await opencodeCreateSession(runner.opencodeBaseUrl, runner.directory);
-    const opencodeResult = await opencodePrompt(runner.opencodeBaseUrl, runner.directory, sessionID, agent, prompt, system);
+    const chatId = getOpenWebUIChatId(req);
+    const title = chatId ? `Open WebUI ${chatId}` : "Open WebUI";
+
+    let sessionID: string;
+    if (chatId) {
+      const lockKey = `${runner.directory}:${chatId}`;
+      sessionID = await withSessionLock(lockKey, async () => {
+        const map = loadSessionMap(runner.directory);
+        const existing = getExistingSessionId(runner.directory, chatId, map);
+        if (existing) return existing;
+
+        const created = await opencodeCreateSession(runner.opencodeBaseUrl, runner.directory, title);
+        map[chatId] = created.id;
+        saveSessionMap(runner.directory, map);
+        return created.id;
+      });
+    } else {
+      const created = await opencodeCreateSession(runner.opencodeBaseUrl, runner.directory, title);
+      sessionID = created.id;
+    }
+
+    let opencodeResult: { info: unknown; parts: Array<any> };
+    try {
+      opencodeResult = await opencodePrompt(runner.opencodeBaseUrl, runner.directory, sessionID, agent, prompt, system);
+    } catch (err) {
+      // If the session expired/was lost (runner restart), recreate once.
+      if (!chatId) throw err;
+
+      const lockKey = `${runner.directory}:${chatId}`;
+      sessionID = await withSessionLock(lockKey, async () => {
+        const map = loadSessionMap(runner.directory);
+        const created = await opencodeCreateSession(runner.opencodeBaseUrl, runner.directory, title);
+        map[chatId] = created.id;
+        saveSessionMap(runner.directory, map);
+        return created.id;
+      });
+
+      opencodeResult = await opencodePrompt(runner.opencodeBaseUrl, runner.directory, sessionID, agent, prompt, system);
+    }
 
     const content = renderOpencodeParts(opencodeResult.parts);
 
