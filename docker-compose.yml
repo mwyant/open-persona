@@ -26,8 +26,8 @@ services:
       - XDG_STATE_HOME=/data/state
     volumes:
       - opencode-data:/data
-      - opencode-workspace:/workspace
-    working_dir: /workspace
+      - open-persona-workspaces:/workspace/open-persona
+    working_dir: /workspace/open-persona
 
   open-persona-sidecar:
     build:
@@ -36,6 +36,9 @@ services:
     environment:
       - PORT=8000
       - OPENCODE_BASE_URL=http://opencode:4096
+      - WORKSPACE_ROOT=/workspace/open-persona
+    volumes:
+      - open-persona-workspaces:/workspace/open-persona
     ports:
       - "8000:8000"
     depends_on:
@@ -44,4 +47,4 @@ services:
 volumes:
   open-webui:
   opencode-data:
-  opencode-workspace:
+  open-persona-workspaces:

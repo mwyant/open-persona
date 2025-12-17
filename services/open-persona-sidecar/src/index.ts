@@ -1,7 +1,12 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+
 import express from "express";
 
 const OPENCODE_BASE_URL = process.env.OPENCODE_BASE_URL ?? "http://opencode:4096";
 const PORT = Number(process.env.PORT ?? "8000");
+const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT ?? "/workspace/open-persona";
 
 type OpenAIMessage = {
   role: "system" | "user" | "assistant" | "tool";
@@ -55,8 +60,32 @@ function agentFromModel(model: string | undefined): "build" | "plan" {
   return "build";
 }
 
-async function opencodeCreateSession(): Promise<{ id: string }> {
-  const res = await fetch(`${OPENCODE_BASE_URL}/session`, {
+function getBearerToken(req: express.Request): string | undefined {
+  const raw = req.header("authorization");
+  if (!raw) return undefined;
+  const match = raw.match(/^Bearer\s+(.+)$/i);
+  if (!match) return undefined;
+  return match[1]?.trim() || undefined;
+}
+
+function workspaceDirectoryForRequest(req: express.Request): string {
+  const token = getBearerToken(req) ?? "anonymous";
+  const hash = crypto.createHash("sha256").update(token, "utf8").digest("hex").slice(0, 16);
+  return path.posix.join(WORKSPACE_ROOT, hash);
+}
+
+function ensureDirectoryExists(dir: string) {
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function opencodeUrl(pathname: string, directory: string): string {
+  const url = new URL(pathname, OPENCODE_BASE_URL);
+  url.searchParams.set("directory", directory);
+  return url.toString();
+}
+
+async function opencodeCreateSession(directory: string): Promise<{ id: string }> {
+  const res = await fetch(opencodeUrl("/session", directory), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ title: "Open WebUI" })
@@ -70,8 +99,8 @@ async function opencodeCreateSession(): Promise<{ id: string }> {
   return (await res.json()) as { id: string };
 }
 
-async function opencodePrompt(sessionID: string, agent: "build" | "plan", prompt: string, system?: string) {
-  const res = await fetch(`${OPENCODE_BASE_URL}/session/${encodeURIComponent(sessionID)}/message`, {
+async function opencodePrompt(directory: string, sessionID: string, agent: "build" | "plan", prompt: string, system?: string) {
+  const res = await fetch(opencodeUrl(`/session/${encodeURIComponent(sessionID)}/message`, directory), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -141,8 +170,11 @@ app.post("/v1/chat/completions", async (req, res) => {
     const system = extractSystem(rawMessages);
     const prompt = buildPrompt(rawMessages);
 
-    const { id: sessionID } = await opencodeCreateSession();
-    const opencodeResult = await opencodePrompt(sessionID, agent, prompt, system);
+    const directory = workspaceDirectoryForRequest(req);
+    ensureDirectoryExists(directory);
+
+    const { id: sessionID } = await opencodeCreateSession(directory);
+    const opencodeResult = await opencodePrompt(directory, sessionID, agent, prompt, system);
 
     const content = renderOpencodeParts(opencodeResult.parts);
 
