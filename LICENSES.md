@@ -17,7 +17,8 @@ Not legal advice.
 
 ## Planned third-party components (likely)
 - Docker images and base OS layers (various licenses)
-- Node/TypeScript runtime deps for `open-persona-sidecar`
+- Node/TypeScript runtime deps for `open-persona-sidecar` (incl. `dockerode`)
+- Docker Engine API access when `RUNNER_MODE=container` (via `/var/run/docker.sock` mount)
 
 ## TODO
 - Record exact upstream versions/tags used in PoC.
