@@ -9,6 +9,8 @@ services:
       # Open WebUI stores these in persistent config on first boot.
       - OPENAI_API_BASE_URLS=http://open-persona-sidecar:8000/v1
       - OPENAI_API_KEYS=sk-open-persona
+      # Disable built-in Ollama polling unless explicitly needed.
+      - ENABLE_OLLAMA_API=False
     ports:
       - "3000:8080"
     volumes:
@@ -43,7 +45,7 @@ services:
       # - shared: use the single `opencode` service
       # - container: spawn `opencode serve` runner containers (requires docker socket)
       - RUNNER_MODE=container
-      - LOG_WORKSPACE_ROUTING=1
+      - LOG_WORKSPACE_ROUTING=0
       - RUNNER_NETWORK=open-persona_default
       - RUNNER_IMAGE=ghcr.io/sst/opencode:latest
       - WORKSPACE_VOLUME=open-persona_open-persona-workspaces
