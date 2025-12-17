@@ -82,7 +82,10 @@ function getBearerToken(req: express.Request): string | undefined {
   return match[1]?.trim() || undefined;
 }
 
-function workspaceKeyForRequest(req: express.Request, body: OpenAIChatCompletionRequest | undefined): string {
+function workspaceKeyForRequest(req: express.Request, body: OpenAIChatCompletionRequest | undefined): {
+  key: string;
+  source: "header" | "body" | "token" | "anonymous";
+} {
   // Prefer an explicit user identifier if the caller provides one.
   const headerUser =
     req.header("x-openwebui-user-id") ??
@@ -95,7 +98,10 @@ function workspaceKeyForRequest(req: express.Request, body: OpenAIChatCompletion
   const bodyUser = typeof body?.user === "string" && body.user.trim() ? body.user.trim() : undefined;
   const token = getBearerToken(req);
 
-  return headerUser ?? bodyUser ?? token ?? "anonymous";
+  if (headerUser) return { key: headerUser, source: "header" };
+  if (bodyUser) return { key: bodyUser, source: "body" };
+  if (token) return { key: token, source: "token" };
+  return { key: "anonymous", source: "anonymous" };
 }
 
 function workspaceHashForKey(key: string): string {
@@ -338,8 +344,12 @@ app.post("/v1/chat/completions", async (req, res) => {
     const system = extractSystem(rawMessages);
     const prompt = buildPrompt(rawMessages);
 
-    const workspaceKey = workspaceKeyForRequest(req, body);
-    const runner = await ensureRunner(workspaceKey);
+    const workspace = workspaceKeyForRequest(req, body);
+    if (process.env.LOG_WORKSPACE_ROUTING === "1") {
+      // eslint-disable-next-line no-console
+      console.log(`workspace routing: source=${workspace.source} hash=${workspaceHashForKey(workspace.key)}`);
+    }
+    const runner = await ensureRunner(workspace.key);
 
     const { id: sessionID } = await opencodeCreateSession(runner.opencodeBaseUrl, runner.directory);
     const opencodeResult = await opencodePrompt(runner.opencodeBaseUrl, runner.directory, sessionID, agent, prompt, system);

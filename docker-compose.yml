@@ -1,6 +1,8 @@
 services:
   openwebui:
-    image: ghcr.io/open-webui/open-webui:main
+    build:
+      context: ./services/open-persona-openwebui
+    image: open-persona-openwebui:local
     restart: unless-stopped
     environment:
       # Preconfigure the built-in OpenAI provider to use the sidecar.
@@ -41,6 +43,7 @@ services:
       # - shared: use the single `opencode` service
       # - container: spawn `opencode serve` runner containers (requires docker socket)
       - RUNNER_MODE=container
+      - LOG_WORKSPACE_ROUTING=1
       - RUNNER_NETWORK=open-persona_default
       - RUNNER_IMAGE=ghcr.io/sst/opencode:latest
       - WORKSPACE_VOLUME=open-persona_open-persona-workspaces
