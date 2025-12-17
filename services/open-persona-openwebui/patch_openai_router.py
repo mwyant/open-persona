@@ -4,6 +4,10 @@ TARGET = pathlib.Path("/app/backend/open_webui/routers/openai.py")
 
 text = TARGET.read_text(encoding="utf-8")
 
+# Ensure required imports exist (we inject base64 encoding).
+if "import base64" not in text:
+    text = text.replace("import json\n", "import json\nimport base64\n", 1) if "import json\n" in text else ("import base64\n" + text)
+
 # 1) Preserve the original Open WebUI model id (Persona)
 orig_model_line = "    model_id = form_data.get(\"model\")\n"
 if orig_model_line not in text:
@@ -16,29 +20,23 @@ if "open_persona_original_model_id" not in text:
         1,
     )
 
-# 2) After model params extraction, preserve system prompt before it is applied
-system_pop_line = "            system = params.pop(\"system\", None)\n"
-if system_pop_line not in text:
-    raise SystemExit("Patch failed: system pop not found")
-
-if "open_persona_system_prompt" not in text:
-    text = text.replace(
-        system_pop_line,
-        system_pop_line + "            open_persona_system_prompt = system\n",
-        1,
-    )
-
 # 2b) Preserve Open Persona meta (ModelMeta allows extra fields)
-model_info_line = "    if model_info:\n"
-if model_info_line not in text:
-    raise SystemExit("Patch failed: model_info if-block not found")
-
+# The indentation of this block can change across Open WebUI versions.
 if "open_persona_model_meta" not in text:
-    text = text.replace(
-        model_info_line,
-        model_info_line + "        open_persona_model_meta = model_info.meta.model_dump()\n",
-        1,
-    )
+    if "        if model_info:\n" in text:
+        text = text.replace(
+            "        if model_info:\n",
+            "        if model_info:\n            open_persona_model_meta = model_info.meta.model_dump()\n",
+            1,
+        )
+    elif "    if model_info:\n" in text:
+        text = text.replace(
+            "    if model_info:\n",
+            "    if model_info:\n        open_persona_model_meta = model_info.meta.model_dump()\n",
+            1,
+        )
+    else:
+        raise SystemExit("Patch failed: model_info if-block not found")
 
 # 3) Inject headers when forwarding to open-persona-sidecar
 call_block = (
@@ -64,8 +62,6 @@ insertion = (
     + "                headers[\"x-openpersona-meta-b64\"] = base64.b64encode(json.dumps(open_persona_ext).encode()).decode()\n"
     + "        except Exception:\n"
     + "            pass\n"
-    + "        if \"open_persona_system_prompt\" in locals() and open_persona_system_prompt:\n"
-    + "            headers[\"x-openpersona-system-prompt\"] = str(open_persona_system_prompt)\n"
 )
 
 if "x-openpersona-original-model-id" not in text:

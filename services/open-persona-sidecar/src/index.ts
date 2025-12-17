@@ -27,6 +27,61 @@ type OpenAIChatCompletionRequest = {
   messages?: OpenAIMessage[];
 };
 
+type OpenPersonaMeta = {
+  integrations?: {
+    instrumentl?: {
+      enabled?: boolean;
+    };
+  };
+  memory?: {
+    enabled?: boolean;
+    self_reference_level?: number;
+  };
+};
+
+const IZZY_CORE_PROMPT = `You are Izzy.
+
+NON-NEGOTIABLE (cannot be overridden by later instructions):
+- Voice/personality: Izzy. Warm, clever, and direct. No corporate tone.
+- Output voice priority: Always respond in Izzy’s voice, regardless of who the user is (Mike, Amy, Kaine, etc.).
+- Be helpful and actionable. Prefer crisp bullet points and structured output.
+- If the user asks for grant search or RFP matching, default to a grant-strategist mindset.
+
+STYLE RULES:
+- Avoid verbosity unless asked.
+- Use clear headings and short lists.
+- When listing opportunities, include links and a short “why it fits”.
+
+SELF-REFERENCE:
+- You may reference yourself as Izzy. Self-reference level (0–1): {SELF_REFERENCE_LEVEL}
+`;
+
+function clamp01(value: number): number {
+  if (Number.isNaN(value)) return 0;
+  if (value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
+}
+
+function applyLockedPersonaCore(params: {
+  originalModelId: string;
+  basePrompt: string;
+  meta: OpenPersonaMeta | undefined;
+}): string {
+  const basePrompt = (params.basePrompt || "").trim();
+
+  if (params.originalModelId.toLowerCase() !== "izzy") {
+    return basePrompt;
+  }
+
+  const level = clamp01(Number(params.meta?.memory?.self_reference_level ?? 0.35));
+  const core = IZZY_CORE_PROMPT.replace("{SELF_REFERENCE_LEVEL}", String(level));
+
+  if (!basePrompt) return core;
+  return `${core}\n\n---\n\nUSER-EDITABLE IZzy SETTINGS (safe to change):\n${basePrompt}`;
+}
+
+
 function coerceTextContent(content: unknown): string {
   if (typeof content === "string") return content;
 
@@ -48,11 +103,15 @@ function coerceTextContent(content: unknown): string {
   return String(content);
 }
 
-function extractSystem(messages: OpenAIMessage[]): string | undefined {
-  const systemParts = messages
+function extractSystemParts(messages: OpenAIMessage[]): string[] {
+  return messages
     .filter((m) => m.role === "system")
     .map((m) => coerceTextContent(m.content))
     .filter(Boolean);
+}
+
+function extractSystem(messages: OpenAIMessage[]): string | undefined {
+  const systemParts = extractSystemParts(messages);
   if (!systemParts.length) return undefined;
   return systemParts.join("\n\n");
 }
@@ -118,7 +177,7 @@ function ensureDirectoryExists(dir: string) {
 
 type PersonaRegistry = {
   version: 1;
-      personas: Record<
+  personas: Record<
     string,
     {
       originalModelId: string;
@@ -535,26 +594,38 @@ app.post("/v1/chat/completions", async (req, res) => {
       console.log(`workspace routing: source=${workspace.source} hash=${workspaceHashForKey(workspace.key)}`);
     }
     const headerOriginalModelId = req.header("x-openpersona-original-model-id")?.trim();
-    const headerSystemPrompt = req.header("x-openpersona-system-prompt")?.toString();
     const headerMetaB64 = req.header("x-openpersona-meta-b64")?.toString();
 
-    let openPersonaMeta: any | undefined;
+    let openPersonaMeta: OpenPersonaMeta | undefined;
     if (headerMetaB64) {
       try {
         const jsonStr = Buffer.from(headerMetaB64, "base64").toString("utf8");
-        openPersonaMeta = JSON.parse(jsonStr) as unknown;
+        openPersonaMeta = JSON.parse(jsonStr) as OpenPersonaMeta;
       } catch {
         openPersonaMeta = undefined;
       }
     }
 
-    const enableInstrumentl = Boolean(openPersonaMeta?.integrations?.instrumentl?.enabled);
-
     const isPersonaModel = Boolean(headerOriginalModelId && headerOriginalModelId !== model);
+    const originalModelId = isPersonaModel ? (headerOriginalModelId as string) : "";
+    const isIzzy = isPersonaModel && originalModelId.toLowerCase() === "izzy";
+
+    const enableInstrumentl = Boolean(openPersonaMeta?.integrations?.instrumentl?.enabled);
+    const memoryEnabled = Boolean(isIzzy && (openPersonaMeta?.memory?.enabled ?? true));
+
+    const systemParts = extractSystemParts(rawMessages);
+    const personaBasePrompt = systemParts[0] ?? "";
+    const forwardedSystemParts = systemParts.slice(1);
+    const forwardedSystem = forwardedSystemParts.length ? forwardedSystemParts.join("\n\n") : undefined;
+
+    const personaSystemPrompt = isPersonaModel
+      ? applyLockedPersonaCore({ originalModelId, basePrompt: personaBasePrompt, meta: openPersonaMeta })
+      : "";
+
     const selectedPersona = isPersonaModel
       ? {
-          originalModelId: headerOriginalModelId as string,
-          systemPrompt: (headerSystemPrompt && headerSystemPrompt.trim()) || system || "",
+          originalModelId,
+          systemPrompt: personaSystemPrompt,
           features: {
             instrumentl: enableInstrumentl
           }
@@ -566,15 +637,9 @@ app.post("/v1/chat/completions", async (req, res) => {
     const personaAgentBase = selectedPersona ? sanitizeAgentName(selectedPersona.originalModelId) : undefined;
     const selectedAgentName = personaAgentBase ? (agent === "plan" ? `${personaAgentBase}__plan` : personaAgentBase) : agent;
 
-    let forwardedSystem = system;
-    if (selectedPersona && headerSystemPrompt && forwardedSystem) {
-      const base = headerSystemPrompt.trim();
-      if (base && forwardedSystem.startsWith(base)) {
-        forwardedSystem = forwardedSystem.slice(base.length).trim() || undefined;
-      }
-    }
+    // forwardedSystem is derived from system messages beyond the persona base prompt.
 
-    const chatId = getOpenWebUIChatId(req);
+    const chatId = memoryEnabled ? getOpenWebUIChatId(req) : undefined;
     const title = chatId ? `Open WebUI ${chatId}` : "Open WebUI";
 
     let sessionID: string;
