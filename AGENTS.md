@@ -1,16 +1,17 @@
 # AGENTS.md (open-persona)
 
 ## Build / Lint / Test
-- Stack: `docker compose up --build` (Open WebUI on `:3000`, sidecar on `:8000`).
+- Stack (primary): `docker compose up --build`.
+- Rebuild one service: `docker compose build open-persona-sidecar` / `docker compose build openwebui`.
 - Sidecar (local): `npm install` then `npm run build|lint|test` in `services/open-persona-sidecar/`.
+- Instrumentl MCP (local): `npm install` + `npm run build` in `services/instrumentl-mcp/`.
 - Single test (sidecar): `npm test -- -t "name"` or `npm test -- src/index.test.ts`.
 
 ## Style / Conventions
-- Keep changes minimal and consistent with existing patterns.
-- TypeScript: prefer explicit types at boundaries; avoid `any`; use `unknown` + narrowing.
-- Imports: group (node/builtins → external → internal); keep sorted; avoid deep relative paths if aliases exist.
-- Formatting: run project formatter (likely Prettier) and don’t reformat unrelated code.
-- Naming: `camelCase` variables/functions, `PascalCase` types/classes/components, `SCREAMING_SNAKE_CASE` constants.
-- Error handling: don’t swallow errors; add actionable context; return correct HTTP status codes; log once.
-- Security: treat Open WebUI user input as untrusted; never log secrets; isolate per-user workspaces.
-- Keep `LICENSES.md` updated when adding/updating upstreams or major dependencies.
+- Keep changes minimal; don’t reformat unrelated code.
+- TypeScript: explicit types at boundaries; avoid `any`; prefer `unknown` + narrowing.
+- Naming: `camelCase` vars, `PascalCase` types, `SCREAMING_SNAKE_CASE` constants.
+- Security: never log secrets; no multi-line secrets in headers (Open WebUI blocks CR/LF).
+- Open WebUI patches must be backend-only and scoped to `open-persona-sidecar` URLs.
+- Start from docs: `docs/ARCHITECTURE.md`, `docs/PROVIDER_KEYS.md`, `docs/PERSONAS.md`.
+- Update `LICENSES.md` when adding dependencies/upstreams.
