@@ -692,16 +692,33 @@ function renderOpencodeParts(parts: Array<any>, opts?: { personaTemplate?: Perso
     }
 
     const state = p.state;
-    if (state?.status === "completed") {
+    const status = state?.status;
+
+    if (status === "completed") {
       const title = typeof state.title === "string" ? state.title : tool;
       const output = typeof state.output === "string" ? state.output : "";
       if (output) {
         out.push(`\n\n---\n\n**${title}**\n\n\`\`\`\n${output}\n\`\`\``);
       }
     }
+
+    if (status === "error") {
+      const title = typeof state.title === "string" ? state.title : tool;
+      const errorText =
+        typeof state.error === "string"
+          ? state.error
+          : typeof state.output === "string"
+            ? state.output
+            : JSON.stringify(state ?? {}, null, 2);
+
+      out.push(`\n\n---\n\n**${title} (error)**\n\n\`\`\`\n${errorText}\n\`\`\``);
+    }
   }
 
-  return out.join("\n").trim();
+  const rendered = out.join("\n").trim();
+  if (rendered) return rendered;
+
+  return "No output from the opencode runner. This usually means provider credentials are missing/invalid, or the model provider request failed.";
 }
 
 const app = express();

@@ -18,6 +18,12 @@ if "import os" not in text:
     else:
         text = "import os\n" + text
 
+# Ensure the Tools model import exists for valve lookup.
+if "from open_webui.models.tools import Tools" not in text:
+    anchor = "from open_webui.models.users import UserModel\n"
+    if anchor in text:
+        text = text.replace(anchor, anchor + "from open_webui.models.tools import Tools\n", 1)
+
 # 1) Preserve the original Open WebUI model id (Persona)
 orig_model_line = "    model_id = form_data.get(\"model\")\n"
 if orig_model_line not in text:
@@ -73,18 +79,21 @@ insertion = (
     + "        except Exception:\n"
     + "            pass\n"
     + "\n"
-    + "        # Open Persona: forward per-user provider keys (no newlines allowed in headers).\n"
+    + "        # Open Persona: forward provider keys from the Open Persona tool valves.\n"
+    + "        # - Tool Valves = admin defaults\n"
+    + "        # - User Valves = per-user overrides\n"
+    + "        # Keys are sanitized to avoid CR/LF in headers.\n"
     + "        try:\n"
-    + "            settings = user.settings.model_dump() if getattr(user, 'settings', None) else {}\n"
-    + "            open_persona_settings = (settings or {}).get('open_persona', {})\n"
-    + "            provider_keys = (open_persona_settings or {}).get('provider_keys', {})\n"
+    + "            tool_id = 'open_persona_provider_keys'\n"
+    + "            tool_valves = Tools.get_tool_valves_by_id(tool_id) or {}\n"
+    + "            user_valves = Tools.get_user_valves_by_id_and_user_id(tool_id, str(user.id)) or {}\n"
     + "\n"
     + "            def _clean(v):\n"
     + "                return str(v).replace('\\n', '').replace('\\r', '').strip()\n"
     + "\n"
-    + "            openai_key = _clean(provider_keys.get('openai_api_key') or os.environ.get('OPEN_PERSONA_DEFAULT_OPENAI_API_KEY', ''))\n"
-    + "            anthropic_key = _clean(provider_keys.get('anthropic_api_key') or os.environ.get('OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY', ''))\n"
-    + "            openrouter_key = _clean(provider_keys.get('openrouter_api_key') or os.environ.get('OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY', ''))\n"
+    + "            openai_key = _clean(user_valves.get('openai_api_key') or tool_valves.get('openai_api_key') or os.environ.get('OPEN_PERSONA_DEFAULT_OPENAI_API_KEY', ''))\n"
+    + "            anthropic_key = _clean(user_valves.get('anthropic_api_key') or tool_valves.get('anthropic_api_key') or os.environ.get('OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY', ''))\n"
+    + "            openrouter_key = _clean(user_valves.get('openrouter_api_key') or tool_valves.get('openrouter_api_key') or os.environ.get('OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY', ''))\n"
     + "\n"
     + "            if openai_key:\n"
     + "                headers['x-openpersona-openai-api-key'] = openai_key\n"
