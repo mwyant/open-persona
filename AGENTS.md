@@ -13,5 +13,5 @@
 - Naming: `camelCase` vars, `PascalCase` types, `SCREAMING_SNAKE_CASE` constants.
 - Security: never log secrets; no multi-line secrets in headers (Open WebUI blocks CR/LF).
 - Open WebUI patches must be backend-only and scoped to `open-persona-sidecar` URLs.
-- Start from docs: `docs/ARCHITECTURE.md`, `docs/PROVIDER_KEYS.md`, `docs/PERSONAS.md`.
+- Start from docs: `docs/MENTAL_MODEL.md`, `docs/AGENT_TASKS.md`, `docs/COOKBOOK.md`.
 - Update `LICENSES.md` when adding dependencies/upstreams.
