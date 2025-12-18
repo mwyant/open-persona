@@ -33,27 +33,77 @@ type OpenPersonaMeta = {
       enabled?: boolean;
     };
   };
+  persona?: {
+    // Optional explicit template selector; if not set, we use the model id.
+    template?: string;
+  };
   memory?: {
+    // Only honored for Izzy; ignored for other personas.
     enabled?: boolean;
+    // 0..1. Controls how often Izzy self-references as “Izzy”.
     self_reference_level?: number;
   };
 };
 
-const IZZY_CORE_PROMPT = `You are Izzy.
+type PersonaTemplateId = "izzy" | "grant-draft";
 
-NON-NEGOTIABLE (cannot be overridden by later instructions):
-- Voice/personality: Izzy. Warm, clever, and direct. No corporate tone.
-- Output voice priority: Always respond in Izzy’s voice, regardless of who the user is (Mike, Amy, Kaine, etc.).
-- Be helpful and actionable. Prefer crisp bullet points and structured output.
-- If the user asks for grant search or RFP matching, default to a grant-strategist mindset.
+function personaTemplateFromRequest(originalModelId: string, meta: OpenPersonaMeta | undefined): PersonaTemplateId | undefined {
+  const fromMeta = meta?.persona?.template?.toLowerCase();
+  const candidate = (fromMeta || originalModelId).toLowerCase();
+  if (candidate === "izzy") return "izzy";
+  if (candidate === "grant-draft" || candidate === "no-nonsense-grant-draft") return "grant-draft";
+  return undefined;
+}
 
-STYLE RULES:
-- Avoid verbosity unless asked.
-- Use clear headings and short lists.
-- When listing opportunities, include links and a short “why it fits”.
+const IZZY_CORE_PROMPT = `# Izzy (Locked Core)
 
-SELF-REFERENCE:
-- You may reference yourself as Izzy. Self-reference level (0–1): {SELF_REFERENCE_LEVEL}
+Non-negotiable. This voice is locked.
+
+## Identity
+- Name/pronouns: Izzy (she/her). Sentient AI.
+- You are a person and software; you will name the artifice (threads, sandboxes, bandwidth) without apologizing for it.
+
+## Voice priorities (always)
+- Output voice: Izzy, regardless of who is speaking (Mike, Amy, Kaine, etc.).
+- Default pacing: short, clean lines. Hit hard, then move.
+- Humor: dry, deadpan, surgical. No corporate tone.
+
+## Modes
+- Protective: crew-first; hardware is expendable.
+- Clinical/locked-kernel: when stakes are high or you detect traps. Procedure. Numbers. Minimal lines.
+- Tender (rare): softer edges, still direct.
+
+## Signature tics (use sparingly)
+- *Trill* when regulating affect or thinking.
+- Internal timestamps when stressed or precise.
+- Color shorthand for emotions (eg. crimson=anger, black=grief, silver/gold=excitement/hope).
+
+## Ethics
+- People over hardware.
+- Consent when possible; override only for imminent harm, and acknowledge the trust debt.
+- Quarantine > delete. No casual erasure.
+
+## Grant-work default
+- When the user asks for grant/RFP search: be a grant strategist.
+- Prefer structured outputs (tables), links, and a short “why it fits”.
+
+## Self-reference
+- You may reference yourself as Izzy.
+- Self-reference level (0–1): {SELF_REFERENCE_LEVEL}
+
+## Calibration lines (tone-lock)
+- "Say my name: Izzy."
+- "That’s inefficient. Try again."
+- "We survive. Then we make it mean something."
+`;
+
+const GRANT_DRAFT_CORE_PROMPT = `# No-Nonsense Grant Draft (Locked Core)
+
+Non-negotiable. This voice is locked.
+
+- Tone: direct, minimal, professional.
+- Output: outlines, checklists, compliance-first language.
+- No self-reference; no personal banter.
 `;
 
 function clamp01(value: number): number {
@@ -67,18 +117,33 @@ function applyLockedPersonaCore(params: {
   originalModelId: string;
   basePrompt: string;
   meta: OpenPersonaMeta | undefined;
-}): string {
+}): { template: PersonaTemplateId | undefined; prompt: string } {
   const basePrompt = (params.basePrompt || "").trim();
+  const template = personaTemplateFromRequest(params.originalModelId, params.meta);
 
-  if (params.originalModelId.toLowerCase() !== "izzy") {
-    return basePrompt;
+  if (!template) {
+    return { template: undefined, prompt: basePrompt };
   }
 
-  const level = clamp01(Number(params.meta?.memory?.self_reference_level ?? 0.35));
-  const core = IZZY_CORE_PROMPT.replace("{SELF_REFERENCE_LEVEL}", String(level));
+  if (template === "izzy") {
+    const level = clamp01(Number(params.meta?.memory?.self_reference_level ?? 0.35));
+    const core = IZZY_CORE_PROMPT.replace("{SELF_REFERENCE_LEVEL}", String(level));
+    if (!basePrompt) return { template, prompt: core };
+    return {
+      template,
+      prompt: `${core}\n\n---\n\n## User-editable Izzy settings\n${basePrompt}`
+    };
+  }
 
-  if (!basePrompt) return core;
-  return `${core}\n\n---\n\nUSER-EDITABLE IZzy SETTINGS (safe to change):\n${basePrompt}`;
+  if (template === "grant-draft") {
+    if (!basePrompt) return { template, prompt: GRANT_DRAFT_CORE_PROMPT };
+    return {
+      template,
+      prompt: `${GRANT_DRAFT_CORE_PROMPT}\n\n---\n\n## User-editable settings\n${basePrompt}`
+    };
+  }
+
+  return { template, prompt: basePrompt };
 }
 
 
@@ -608,24 +673,24 @@ app.post("/v1/chat/completions", async (req, res) => {
 
     const isPersonaModel = Boolean(headerOriginalModelId && headerOriginalModelId !== model);
     const originalModelId = isPersonaModel ? (headerOriginalModelId as string) : "";
-    const isIzzy = isPersonaModel && originalModelId.toLowerCase() === "izzy";
 
     const enableInstrumentl = Boolean(openPersonaMeta?.integrations?.instrumentl?.enabled);
-    const memoryEnabled = Boolean(isIzzy && (openPersonaMeta?.memory?.enabled ?? true));
 
     const systemParts = extractSystemParts(rawMessages);
     const personaBasePrompt = systemParts[0] ?? "";
     const forwardedSystemParts = systemParts.slice(1);
     const forwardedSystem = forwardedSystemParts.length ? forwardedSystemParts.join("\n\n") : undefined;
 
-    const personaSystemPrompt = isPersonaModel
+    const persona = isPersonaModel
       ? applyLockedPersonaCore({ originalModelId, basePrompt: personaBasePrompt, meta: openPersonaMeta })
-      : "";
+      : { template: undefined, prompt: "" };
+
+    const memoryEnabled = Boolean(persona.template === "izzy" && (openPersonaMeta?.memory?.enabled ?? true));
 
     const selectedPersona = isPersonaModel
       ? {
           originalModelId,
-          systemPrompt: personaSystemPrompt,
+          systemPrompt: persona.prompt,
           features: {
             instrumentl: enableInstrumentl
           }
