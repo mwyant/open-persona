@@ -8,3 +8,4 @@ Start here:
 - `docs/PROVIDER_KEYS.md`
 - `docs/PERSONAS.md`
 - `docs/OPENWEBUI_INTEGRATION.md`
+- `docs/COOKBOOK.md`
