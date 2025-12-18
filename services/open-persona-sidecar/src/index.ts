@@ -15,6 +15,10 @@ const RUNNER_IMAGE = process.env.RUNNER_IMAGE ?? "ghcr.io/sst/opencode:latest";
 const WORKSPACE_VOLUME = process.env.WORKSPACE_VOLUME ?? "open-persona_open-persona-workspaces";
 const OPENCODE_DATA_VOLUME = process.env.OPENCODE_DATA_VOLUME ?? "open-persona_opencode-data";
 
+const DEFAULT_OPENAI_API_KEY = process.env.OPEN_PERSONA_DEFAULT_OPENAI_API_KEY;
+const DEFAULT_ANTHROPIC_API_KEY = process.env.OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY;
+const DEFAULT_OPENROUTER_API_KEY = process.env.OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY;
+
 type OpenAIMessage = {
   role: "system" | "user" | "assistant" | "tool";
   content: unknown;
@@ -544,8 +548,44 @@ async function waitForOpencodeServer(opencodeBaseUrl: string): Promise<void> {
   throw new Error(`opencode runner not responding at ${opencodeBaseUrl}`);
 }
 
+type ProviderKeys = {
+  openaiApiKey?: string;
+  anthropicApiKey?: string;
+  openrouterApiKey?: string;
+};
+
+function cleanHeaderValue(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const cleaned = value.replace(/[\r\n]/g, "").trim();
+  return cleaned || undefined;
+}
+
+function providerKeysFromRequest(req: express.Request): ProviderKeys {
+  return {
+    openaiApiKey: cleanHeaderValue(req.header("x-openpersona-openai-api-key")) ?? cleanHeaderValue(DEFAULT_OPENAI_API_KEY),
+    anthropicApiKey: cleanHeaderValue(req.header("x-openpersona-anthropic-api-key")) ?? cleanHeaderValue(DEFAULT_ANTHROPIC_API_KEY),
+    openrouterApiKey: cleanHeaderValue(req.header("x-openpersona-openrouter-api-key")) ?? cleanHeaderValue(DEFAULT_OPENROUTER_API_KEY)
+  };
+}
+
+function providerSignature(keys: ProviderKeys): string {
+  // Used only for container identity; never log raw keys.
+  const material = JSON.stringify(
+    {
+      openai: keys.openaiApiKey ?? "",
+      anthropic: keys.anthropicApiKey ?? "",
+      openrouter: keys.openrouterApiKey ?? ""
+    },
+    null,
+    0
+  );
+  const sig = crypto.createHash("sha256").update(material, "utf8").digest("hex").slice(0, 8);
+  return sig || "default";
+}
+
 async function ensureRunner(
   workspaceKey: string,
+  providerKeys: ProviderKeys,
   selectedPersona: { originalModelId: string; systemPrompt: string; features?: { instrumentl?: boolean } } | undefined
 ): Promise<{ opencodeBaseUrl: string; directory: string; configChanged: boolean }> {
   const directory = workspaceDirectoryForKey(workspaceKey);
@@ -557,7 +597,8 @@ async function ensureRunner(
   }
 
   const hash = workspaceHashForKey(workspaceKey);
-  const name = `open-persona-runner-${hash}`;
+  const keySig = providerSignature(providerKeys);
+  const name = `open-persona-runner-${hash}-${keySig}`;
   const baseUrl = `http://${name}:4096`;
 
   const docker = dockerClient();
@@ -570,21 +611,25 @@ async function ensureRunner(
   } catch (err) {
     const binds = [`${OPENCODE_DATA_VOLUME}:/data`, `${WORKSPACE_VOLUME}:/workspace/open-persona`];
 
+    const env: string[] = [
+      `XDG_CONFIG_HOME=/data/config/${hash}/${keySig}`,
+      `XDG_STATE_HOME=/data/state/${hash}/${keySig}`
+    ];
+
+    if (providerKeys.openaiApiKey) env.push(`OPENAI_API_KEY=${providerKeys.openaiApiKey}`);
+    if (providerKeys.anthropicApiKey) env.push(`ANTHROPIC_API_KEY=${providerKeys.anthropicApiKey}`);
+    if (providerKeys.openrouterApiKey) env.push(`OPENROUTER_API_KEY=${providerKeys.openrouterApiKey}`);
+
     container = await docker.createContainer({
       name,
       Image: RUNNER_IMAGE,
       Cmd: ["serve", "--hostname", "0.0.0.0", "--port", "4096"],
       WorkingDir: `/workspace/open-persona/${hash}`,
-      Env: [
-        `XDG_CONFIG_HOME=/data/config/${hash}`,
-        `XDG_STATE_HOME=/data/state/${hash}`,
-        // Allow provider keys to be injected at the stack level.
-        ...(process.env.ANTHROPIC_API_KEY ? [`ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY}`] : []),
-        ...(process.env.OPENAI_API_KEY ? [`OPENAI_API_KEY=${process.env.OPENAI_API_KEY}`] : [])
-      ],
+      Env: env,
       Labels: {
         "open-persona.runner": "true",
-        "open-persona.workspace": hash
+        "open-persona.workspace": hash,
+        "open-persona.keysig": keySig
       },
       HostConfig: {
         NetworkMode: RUNNER_NETWORK,
@@ -732,7 +777,8 @@ app.post("/v1/chat/completions", async (req, res) => {
         }
       : undefined;
 
-    const runner = await ensureRunner(workspace.key, selectedPersona);
+    const keys = providerKeysFromRequest(req);
+    const runner = await ensureRunner(workspace.key, keys, selectedPersona);
 
     const personaAgentBase = selectedPersona ? sanitizeAgentName(selectedPersona.originalModelId) : undefined;
     const selectedAgentName = personaAgentBase ? (agent === "plan" ? `${personaAgentBase}__plan` : personaAgentBase) : agent;

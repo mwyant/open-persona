@@ -11,6 +11,10 @@ services:
       - OPENAI_API_KEYS=sk-open-persona
       # Disable built-in Ollama polling unless explicitly needed.
       - ENABLE_OLLAMA_API=False
+      # Admin defaults for Open Persona provider keys (fallback when user has none)
+      - OPEN_PERSONA_DEFAULT_OPENAI_API_KEY=
+      - OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY=
+      - OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY=
     ports:
       - "3000:8080"
     volumes:
@@ -61,6 +65,10 @@ services:
       - RUNNER_IMAGE=ghcr.io/sst/opencode:latest
       - WORKSPACE_VOLUME=open-persona_open-persona-workspaces
       - OPENCODE_DATA_VOLUME=open-persona_opencode-data
+      # Admin defaults for Open Persona provider keys (fallback)
+      - OPEN_PERSONA_DEFAULT_OPENAI_API_KEY=
+      - OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY=
+      - OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY=
     volumes:
       - open-persona-workspaces:/workspace/open-persona
       - /var/run/docker.sock:/var/run/docker.sock

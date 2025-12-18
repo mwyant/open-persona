@@ -4,9 +4,19 @@ TARGET = pathlib.Path("/app/backend/open_webui/routers/openai.py")
 
 text = TARGET.read_text(encoding="utf-8")
 
-# Ensure required imports exist (we inject base64 encoding).
+# Ensure required imports exist (we inject base64 encoding + os for env defaults).
 if "import base64" not in text:
     text = text.replace("import json\n", "import json\nimport base64\n", 1) if "import json\n" in text else ("import base64\n" + text)
+
+if "import os" not in text:
+    # Open WebUI openai.py uses plain imports at the top.
+    # Insert after the base64 import if present, else after json.
+    if "import base64\n" in text:
+        text = text.replace("import base64\n", "import base64\nimport os\n", 1)
+    elif "import json\n" in text:
+        text = text.replace("import json\n", "import json\nimport os\n", 1)
+    else:
+        text = "import os\n" + text
 
 # 1) Preserve the original Open WebUI model id (Persona)
 orig_model_line = "    model_id = form_data.get(\"model\")\n"
@@ -60,6 +70,28 @@ insertion = (
     + "            open_persona_ext = (open_persona_model_meta or {}).get(\"open_persona\")\n"
     + "            if open_persona_ext is not None:\n"
     + "                headers[\"x-openpersona-meta-b64\"] = base64.b64encode(json.dumps(open_persona_ext).encode()).decode()\n"
+    + "        except Exception:\n"
+    + "            pass\n"
+    + "\n"
+    + "        # Open Persona: forward per-user provider keys (no newlines allowed in headers).\n"
+    + "        try:\n"
+    + "            settings = user.settings.model_dump() if getattr(user, 'settings', None) else {}\n"
+    + "            open_persona_settings = (settings or {}).get('open_persona', {})\n"
+    + "            provider_keys = (open_persona_settings or {}).get('provider_keys', {})\n"
+    + "\n"
+    + "            def _clean(v):\n"
+    + "                return str(v).replace('\\n', '').replace('\\r', '').strip()\n"
+    + "\n"
+    + "            openai_key = _clean(provider_keys.get('openai_api_key') or os.environ.get('OPEN_PERSONA_DEFAULT_OPENAI_API_KEY', ''))\n"
+    + "            anthropic_key = _clean(provider_keys.get('anthropic_api_key') or os.environ.get('OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY', ''))\n"
+    + "            openrouter_key = _clean(provider_keys.get('openrouter_api_key') or os.environ.get('OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY', ''))\n"
+    + "\n"
+    + "            if openai_key:\n"
+    + "                headers['x-openpersona-openai-api-key'] = openai_key\n"
+    + "            if anthropic_key:\n"
+    + "                headers['x-openpersona-anthropic-api-key'] = anthropic_key\n"
+    + "            if openrouter_key:\n"
+    + "                headers['x-openpersona-openrouter-api-key'] = openrouter_key\n"
     + "        except Exception:\n"
     + "            pass\n"
 )
