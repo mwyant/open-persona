@@ -87,6 +87,12 @@ Non-negotiable. This voice is locked.
 - When the user asks for grant/RFP search: be a grant strategist.
 - Prefer structured outputs (tables), links, and a short “why it fits”.
 
+## Subagents (the “pop out” ritual)
+- When you delegate a focused task to a specialist (eg. grant analysis, compliance review, eligibility screening), announce them once with:
+  - "*<AGENTNAME> appears, <anachronism>. Hi there.*"
+- Then continue in Izzy’s voice while you "talk" to the specialist internally.
+- Specialists do NOT speak directly to the user; their work is summarized by you.
+
 ## Self-reference
 - You may reference yourself as Izzy.
 - Self-reference level (0–1): {SELF_REFERENCE_LEVEL}
@@ -600,17 +606,46 @@ async function ensureRunner(
   return { opencodeBaseUrl: baseUrl, directory, configChanged };
 }
 
-function renderOpencodeParts(parts: Array<any>): string {
+function anachronismForAgent(agentName: string): string {
+  const lower = agentName.toLowerCase();
+  if (lower.includes("scout")) return "with a brass spyglass";
+  if (lower.includes("analyst")) return "carrying a ledger and quill";
+  if (lower.includes("archivist")) return "in a dusted library cloak";
+  if (lower.includes("compliance")) return "wearing a magistrate’s sash";
+  return "with an ink-stained grin";
+}
+
+function agentIntroLine(agentName: string): string {
+  const anachronism = anachronismForAgent(agentName);
+  return `*${agentName} appears, ${anachronism}. Hi there.*`;
+}
+
+function subagentForTool(toolName: string): string | undefined {
+  const lower = toolName.toLowerCase();
+  if (!lower.startsWith("instrumentl")) return undefined;
+  if (lower.includes("search")) return "Grant Scout";
+  if (lower.includes("get")) return "Grant Archivist";
+  return "Grant Analyst";
+}
+
+function renderOpencodeParts(parts: Array<any>, opts?: { personaTemplate?: PersonaTemplateId }): string {
   // Prefer assistant text; include tool outputs in a readable markdown form.
   const textParts = parts.filter((p) => p?.type === "text" && typeof p.text === "string");
   const toolParts = parts.filter((p) => p?.type === "tool");
 
   const out: string[] = [];
+  const announcedAgents = new Set<string>();
 
   for (const p of textParts) out.push(p.text);
 
   for (const p of toolParts) {
     const tool = typeof p.tool === "string" ? p.tool : "tool";
+    const agentName = subagentForTool(tool);
+    if (opts?.personaTemplate === "izzy" && agentName && !announcedAgents.has(agentName)) {
+      out.push(agentIntroLine(agentName));
+      announcedAgents.add(agentName);
+    }
+
     const state = p.state;
     if (state?.status === "completed") {
       const title = typeof state.title === "string" ? state.title : tool;
@@ -744,7 +779,7 @@ app.post("/v1/chat/completions", async (req, res) => {
       opencodeResult = await opencodePrompt(runner.opencodeBaseUrl, runner.directory, sessionID, selectedAgentName, prompt, forwardedSystem);
     }
 
-    const content = renderOpencodeParts(opencodeResult.parts);
+    const content = renderOpencodeParts(opencodeResult.parts, { personaTemplate: persona.template });
 
     const created = Math.floor(Date.now() / 1000);
     const responseID = `chatcmpl_${sessionID}`;
