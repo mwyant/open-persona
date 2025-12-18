@@ -76,8 +76,9 @@ insertion = (
     + "            open_persona_ext = (open_persona_model_meta or {}).get(\"open_persona\")\n"
     + "            if open_persona_ext is not None:\n"
     + "                headers[\"x-openpersona-meta-b64\"] = base64.b64encode(json.dumps(open_persona_ext).encode()).decode()\n"
-    + "        except Exception:\n"
-    + "            pass\n"
+    + "        except Exception as e:\n"
+    + "            print(f\"open-persona: failed to forward open_persona_meta: {e}\")\n"
+
     + "\n"
     + "        # Open Persona: forward provider keys from the Open Persona tool valves.\n"
     + "        # - Tool Valves = admin defaults\n"
@@ -102,8 +103,8 @@ insertion = (
     + "                headers['x-openpersona-anthropic-api-key'] = anthropic_key\n"
     + "            if openrouter_key:\n"
     + "                headers['x-openpersona-openrouter-api-key'] = openrouter_key\n"
-    + "        except Exception:\n"
-    + "            pass\n"
+    + "        except Exception as e:\n"
+    + "            print(f\"open-persona: failed to forward provider keys: {e}\")\n"
 )
 
 if "x-openpersona-original-model-id" not in text:

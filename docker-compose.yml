@@ -4,6 +4,8 @@ services:
       context: ./services/open-persona-openwebui
     image: open-persona-openwebui:local
     restart: unless-stopped
+    env_file:
+      - ./.env
     environment:
       # Preconfigure the built-in OpenAI provider to use the sidecar.
       # Open WebUI stores these in persistent config on first boot.
@@ -12,9 +14,9 @@ services:
       # Disable built-in Ollama polling unless explicitly needed.
       - ENABLE_OLLAMA_API=False
       # Admin defaults for Open Persona provider keys (fallback when user has none)
-      - OPEN_PERSONA_DEFAULT_OPENAI_API_KEY=
-      - OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY=
-      - OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY=
+      - OPEN_PERSONA_DEFAULT_OPENAI_API_KEY=${OPEN_PERSONA_DEFAULT_OPENAI_API_KEY:-}
+      - OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY=${OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY:-}
+      - OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY=${OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY:-}
     ports:
       - "3000:8080"
     volumes:
@@ -52,6 +54,8 @@ services:
     build:
       context: ./services/open-persona-sidecar
     restart: unless-stopped
+    env_file:
+      - ./.env
     environment:
       - PORT=8000
       - OPENCODE_BASE_URL=http://opencode:4096
@@ -66,9 +70,9 @@ services:
       - WORKSPACE_VOLUME=open-persona_open-persona-workspaces
       - OPENCODE_DATA_VOLUME=open-persona_opencode-data
       # Admin defaults for Open Persona provider keys (fallback)
-      - OPEN_PERSONA_DEFAULT_OPENAI_API_KEY=
-      - OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY=
-      - OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY=
+      - OPEN_PERSONA_DEFAULT_OPENAI_API_KEY=${OPEN_PERSONA_DEFAULT_OPENAI_API_KEY:-}
+      - OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY=${OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY:-}
+      - OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY=${OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY:-}
     volumes:
       - open-persona-workspaces:/workspace/open-persona
       - /var/run/docker.sock:/var/run/docker.sock

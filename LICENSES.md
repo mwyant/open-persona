@@ -16,6 +16,12 @@ Not legal advice.
 - Notes: For PoC we plan to run the official container image (`ghcr.io/open-webui/open-webui`) without modifying upstream. If/when we fork or ship derivative UI code, we must comply with branding and any other terms in upstream `LICENSE` / `LICENSE_HISTORY`.
 
 ## Planned third-party components (likely)
+
+### marked (marked.js)
+- Source: https://github.com/markedjs/marked
+- Version: 12.0.2 (vendored)
+- License: MIT
+
 - Docker images and base OS layers (various licenses)
 - Node/TypeScript runtime deps for `open-persona-sidecar` (incl. `dockerode`)
 - Node/TypeScript runtime deps for `instrumentl-mcp` (incl. `@modelcontextprotocol/sdk`, `zod`)

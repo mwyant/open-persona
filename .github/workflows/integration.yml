@@ -1,0 +1,37 @@
+name: Integration Test
+
+on:
+  push:
+    paths:
+      - 'open-persona/**'
+      - '.github/workflows/integration.yml'
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Log into Docker (no-op)
+        run: echo "Using local docker engine"
+      - name: Start services with docker-compose
+        env:
+          # Allow the workflow to fail if no .env present; users may provide secrets in repo settings
+          OPEN_PERSONA_DEFAULT_OPENAI_API_KEY: ${{ secrets.OPEN_PERSONA_DEFAULT_OPENAI_API_KEY || '' }}
+        run: |
+          docker compose -f open-persona/docker-compose.yml --env-file open-persona/.env up -d --no-deps --build openwebui open-persona-sidecar
+          # wait for sidecar
+          for i in {1..30}; do
+            if curl -sSf http://localhost:8000/healthz >/dev/null 2>&1; then echo "sidecar up"; break; fi
+            sleep 1
+          done
+          curl -sSf http://localhost:8000/healthz
+      - name: Run CI healthcheck script
+        run: |
+          chmod +x open-persona/scripts/ci_healthcheck.sh
+          OPEN_PERSONA_DEFAULT_OPENAI_API_KEY=${{ secrets.OPEN_PERSONA_DEFAULT_OPENAI_API_KEY || '' }} \
+            open-persona/scripts/ci_healthcheck.sh http://localhost:8000
+      - name: Tear down
+        if: always()
+        run: docker compose -f open-persona/docker-compose.yml down

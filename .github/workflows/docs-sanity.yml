@@ -1,0 +1,27 @@
+name: Docs sanity
+
+on:
+  push:
+    paths:
+      - 'open-persona/Documentation.html'
+      - 'open-persona/docs/**'
+      - '.github/workflows/docs-sanity.yml'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Check inline JS parses and vendored assets
+        run: |
+          set -eux
+          # extract inline script between first <script> and </script>
+          awk '/<script>/{flag=1;next}/<\/script>/{flag=0}flag{print}' open-persona/Documentation.html > served_docs.js
+          node --check served_docs.js
+          if [ ! -f open-persona/vendor/marked.min.js ]; then echo "marked.min.js missing"; exit 2; fi

@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Open Persona Documentation</title>
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --panel: #121a2a;
+      --panel2: #0f1624;
+      --text: #e6edf3;
+      --muted: #9fb0c0;
+      --border: rgba(255,255,255,0.08);
+      --link: #7dd3fc;
+      --link2: #a78bfa;
+      --code: #0b1020;
+    }
+
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      line-height: 1.5;
+    }
+
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .app {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      height: 100vh;
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--border);
+      background: linear-gradient(180deg, var(--panel), var(--panel2));
+      display: flex;
+      flex-direction: column;
+      min-width: 260px;
+    }
+
+    .sidebar-header {
+      padding: 14px 14px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-title {
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.02em;
+      margin: 0 0 8px;
+    }
+
+    .sidebar-sub {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .search {
+      width: 100%;
+      box-sizing: border-box;
+      margin-top: 10px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.25);
+      color: var(--text);
+      outline: none;
+    }
+
+    .tree {
+      padding: 10px 10px 14px;
+      overflow: auto;
+    }
+
+    .tree a {
+      display: block;
+      padding: 8px 10px;
+      border-radius: 10px;
+      color: var(--text);
+    }
+
+    .tree a:hover {
+      background: rgba(255,255,255,0.06);
+      text-decoration: none;
+    }
+
+    .tree a.active {
+      background: rgba(125, 211, 252, 0.10);
+      border: 1px solid rgba(125, 211, 252, 0.18);
+    }
+
+    .tree .path {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .content {
+      overflow: auto;
+      padding: 22px;
+    }
+
+    .topbar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+    }
+
+    .topbar .current {
+      min-width: 0;
+    }
+
+    .topbar .current .h1 {
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0;
+    }
+
+    .topbar .current .p {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 2px 0 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .topbar .actions {
+      display: flex;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .btn {
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.06);
+      padding: 7px 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .btn:hover { background: rgba(255,255,255,0.10); }
+
+    .markdown {
+      max-width: 920px;
+    }
+
+    .markdown h1, .markdown h2, .markdown h3, .markdown h4 {
+      line-height: 1.25;
+    }
+
+    .markdown h1 { font-size: 28px; }
+    .markdown h2 { font-size: 22px; margin-top: 26px; }
+    .markdown h3 { font-size: 18px; margin-top: 22px; }
+
+    .markdown code {
+      background: rgba(255,255,255,0.06);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.95em;
+    }
+
+    .markdown pre {
+      background: var(--code);
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: auto;
+    }
+
+    .markdown pre code {
+      background: transparent;
+      padding: 0;
+    }
+
+    .markdown blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 3px solid rgba(167,139,250,0.6);
+      background: rgba(167,139,250,0.08);
+      border-radius: 10px;
+      color: var(--text);
+    }
+
+    .markdown table {
+      border-collapse: collapse;
+      width: 100%;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+
+    .markdown th, .markdown td {
+      border-bottom: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .markdown th { background: rgba(255,255,255,0.05); }
+
+    .notice {
+      border: 1px solid rgba(125, 211, 252, 0.18);
+      background: rgba(125, 211, 252, 0.10);
+      padding: 12px 14px;
+      border-radius: 12px;
+      color: var(--text);
+      max-width: 920px;
+    }
+
+    .notice .small {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 6px;
+    }
+
+    @media (max-width: 900px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { height: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title">Open Persona docs</div>
+        <div class="sidebar-sub">Single-file viewer for `docs/`</div>
+        <input id="search" class="search" type="search" placeholder="Filter docs…" />
+      </div>
+      <nav id="tree" class="tree"></nav>
+    </aside>
+
+    <main class="content">
+      <div class="topbar">
+        <div class="current">
+          <p class="h1" id="currentTitle">Loading…</p>
+          <p class="p" id="currentPath"></p>
+        </div>
+        <div class="actions">
+          <select id="versionSelect" class="btn" title="Select docs version"></select>
+          <button class="btn" id="copyLinkBtn" title="Copy link to this doc">Copy link</button>
+          <a class="btn" id="githubBtn" target="_blank" rel="noreferrer">View on GitHub</a>
+        </div>
+      </div>
+
+      <div id="notice" class="notice" style="display:none"></div>
+      <article id="md" class="markdown"></article>
+    </main>
+  </div>
+
+  <!-- Markdown renderer. Uses vendored copy; falls back to CDN. -->
+  <script src="vendor/marked.min.js"></script>
+
+  <script>
+    // Edit these if you fork or change default branch.
+const GITHUB_REPO = "mwyant/open-persona";
+let GITHUB_BRANCH = "main";
+const CURRENT_PATH_PREFIX = window.location.pathname.replace(/\/$/, '');
+
+    const MARKED_CDN_URL = "https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js";
+
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = src;
+        s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+        document.head.appendChild(s);
+      });
+    }
+
+    async function ensureMarkedLoaded() {
+      if (window.marked) return;
+      await loadScript(MARKED_CDN_URL);
+      if (!window.marked) {
+        throw new Error("marked.js failed to load");
+      }
+    }
+
+    // Manifest of docs in this repo. Keep paths workspace-relative.
+    const DOCS = [
+      "docs/README.md",
+      "docs/MENTAL_MODEL.md",
+      "docs/AGENT_TASKS.md",
+      "docs/COOKBOOK.md",
+      "docs/ARCHITECTURE.md",
+      "docs/DEVELOPMENT.md",
+      "docs/OPENWEBUI_INTEGRATION.md",
+      "docs/PROVIDER_KEYS.md",
+      "docs/PERSONAS.md"
+    ];
+
+    function titleFromPath(p) {
+      const name = p.split("/").slice(-1)[0] || p;
+      return name.replace(/\.md$/i, "").replace(/_/g, " ");
+    }
+
+    function normalizePath(p) {
+      return p.replace(/^#/, "").replace(/^\//, "");
+    }
+
+    function defaultDoc() {
+      return "docs/README.md";
+    }
+
+function currentDocPath() {
+  const raw = normalizePath(location.hash).split('#')[0];
+  if (!raw) return defaultDoc();
+  if (!raw.endsWith(".md")) return defaultDoc();
+  if (!DOCS.includes(raw)) return defaultDoc();
+  return raw;
+}
+
+    function setHash(path) {
+      location.hash = "#" + path;
+    }
+
+    // Version handling: populate options from repo tags (main + tags).
+    const VERSIONS = ["main","v0.2.7","v0.2.6","v0.2.5","v0.2.4","v0.2.3","v0.2.2","v0.2.1","v0.2.0","v0.1.1"];
+
+    function githubUrlForDoc(path) {
+      return `https://github.com/${GITHUB_REPO}/blob/${GITHUB_BRANCH}/${path}`;
+    }
+
+function resolveRelativeLink(baseDoc, href) {
+  // Resolve relative Markdown links to their path within the repo.
+  // Preserve absolute URLs (http/https) unchanged.
+  if (/^https?:\/\//i.test(href)) return href;
+
+  // If href starts with a slash, treat as root-relative within docs folder
+  if (href.startsWith("/")) return href.slice(1);
+
+  // Determine base directory of the current doc
+  const baseDir = baseDoc.replace(/[^/]+$/, ''); // remove filename or trailing slash
+
+  // Combine baseDir and href
+  let combined = baseDir + href;
+
+  // Normalize path (handle . and ..)
+  const parts = combined.split('/');
+  const stack = [];
+  for (const part of parts) {
+    if (!part || part === '.') continue;
+    if (part === '..') {stack.pop();} else {stack.push(part);}
+  }
+  return stack.join('/') || '';
+}
+
+    function contentUrlForDoc(path) {
+      // By default, load files relative to this HTML file.
+      // If the viewer is served from a subpath, relative paths still resolve correctly.
+      return path;
+    }
+
+    function installMarked(docPath) {
+      if (!window.marked) {
+        throw new Error("marked.js failed to load");
+      }
+
+      const renderer = new marked.Renderer();
+      renderer.link = function (href, title, text) {
+        const safeHref = String(href || "");
+        const safeText = String(text || safeHref);
+
+        // Treat .md links as internal docs navigation (hash-based).
+        if (safeHref.endsWith(".md") || safeHref.includes(".md#")) {
+          const [filePart, fragment] = safeHref.split("#");
+          const resolved = resolveRelativeLink(docPath, filePart);
+          const hash = resolved + (fragment ? ("#" + fragment) : "");
+          return `<a href="#${hash}">${safeText}</a>`;
+        }
+
+        const t = title ? ` title="${title}"` : "";
+        return `<a href="${safeHref}"${t} target="_blank" rel="noreferrer">${safeText}</a>`;
+      };
+
+      marked.setOptions({
+        gfm: true,
+        breaks: false,
+        renderer
+      });
+    }
+
+    function renderTree(activePath) {
+      const tree = document.getElementById("tree");
+      tree.innerHTML = "";
+
+      const q = (document.getElementById("search").value || "").toLowerCase();
+
+      for (const p of DOCS) {
+        const label = titleFromPath(p);
+        const hay = (p + " " + label).toLowerCase();
+        if (q && !hay.includes(q)) continue;
+
+        const a = document.createElement("a");
+        a.href = "#" + p;
+        a.className = p === activePath ? "active" : "";
+
+        const title = document.createElement("div");
+        title.textContent = label;
+        title.style.fontWeight = "600";
+        title.style.fontSize = "13px";
+
+        const meta = document.createElement("div");
+        meta.className = "path";
+        meta.textContent = p;
+
+        a.appendChild(title);
+        a.appendChild(meta);
+        tree.appendChild(a);
+      }
+    }
+
+    function showNotice(html) {
+      const box = document.getElementById("notice");
+      box.style.display = "block";
+      box.innerHTML = html;
+    }
+
+    function hideNotice() {
+      const box = document.getElementById("notice");
+      box.style.display = "none";
+      box.innerHTML = "";
+    }
+
+    async function loadDoc(path) {
+      const currentTitle = document.getElementById("currentTitle");
+      const currentPath = document.getElementById("currentPath");
+      const md = document.getElementById("md");
+      const githubBtn = document.getElementById("githubBtn");
+
+      currentTitle.textContent = titleFromPath(path);
+      currentPath.textContent = path;
+      githubBtn.href = githubUrlForDoc(path);
+
+      renderTree(path);
+
+      // Explain local usage if people double-click the file.
+      if (location.protocol === "file:") {
+        showNotice(
+          `<div><strong>Local file mode detected.</strong> Browsers block fetching local files.</div>` +
+          `<div class="small">Run a local server instead: <code>python3 -m http.server</code> then open <code>http://localhost:8000/Documentation.html</code>.</div>`
+        );
+        md.innerHTML = "";
+        return;
+      }
+
+      hideNotice();
+
+      try {
+        await ensureMarkedLoaded();
+        installMarked(path);
+
+        const res = await fetch(contentUrlForDoc(path), { cache: "no-cache" });
+        if (!res.ok) {
+          throw new Error(`Failed to fetch ${path}: ${res.status}`);
+        }
+
+        const text = await res.text();
+        md.innerHTML = marked.parse(text);
+
+        // If URL is like #docs/README.md#some-anchor, scroll after render.
+        const hash = location.hash.replace(/^#/, "");
+        const parts = hash.split("#");
+        if (parts.length > 1) {
+          const anchor = parts.slice(1).join("#");
+          const el = document.getElementById(anchor);
+          if (el) el.scrollIntoView({ block: "start" });
+        }
+      } catch (err) {
+        showNotice(
+          `<div><strong>Could not render Markdown.</strong></div>` +
+          `<div class="small">${String(err)}</div>`
+        );
+        md.innerHTML = "";
+      }
+    }
+
+    function handleRoute() {
+      const p = currentDocPath();
+      loadDoc(p);
+    }
+
+    document.getElementById("search").addEventListener("input", () => renderTree(currentDocPath()));
+
+    document.getElementById("copyLinkBtn").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(location.href);
+        const btn = document.getElementById("copyLinkBtn");
+        const old = btn.textContent;
+        btn.textContent = "Copied";
+        setTimeout(() => (btn.textContent = old), 800);
+      } catch {
+        // ignore
+      }
+    });
+
+    window.addEventListener("hashchange", handleRoute);
+
+    // Populate version selector
+    (function initVersions(){
+      const sel = document.getElementById('versionSelect');
+      if (!sel) return;
+      VERSIONS.forEach(v => {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = v;
+        if (v === GITHUB_BRANCH) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.addEventListener('change', (e) => {
+        GITHUB_BRANCH = e.target.value;
+        // Update GitHub link for current doc
+        const githubBtn = document.getElementById('githubBtn');
+        if (githubBtn) githubBtn.href = githubUrlForDoc(currentDocPath());
+      });
+    })();
+
+    // Initial render
+    renderTree(currentDocPath());
+    handleRoute();
+  </script>
+</body>
+</html>

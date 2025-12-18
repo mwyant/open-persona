@@ -1,8 +1,19 @@
+import os
 import pathlib
 
-TARGET = pathlib.Path("/app/backend/open_webui/routers/tools.py")
+TARGET = pathlib.Path(os.environ.get("OPENWEBUI_TOOLS_ROUTER", "/app/backend/open_webui/routers/tools.py"))
+
+if not TARGET.exists():
+    raise SystemExit(f"Target router not found: {TARGET}")
 
 text = TARGET.read_text(encoding="utf-8")
+
+# If bypass flag is set, skip injecting access_control enforcement.
+if os.environ.get("OPEN_PERSONA_BYPASS_VALVES_ACCESS_CONTROL", "").lower() in ("1", "true", "yes"):
+    print("Skipping valves access_control injection (OPEN_PERSONA_BYPASS_VALVES_ACCESS_CONTROL enabled)")
+    TARGET.write_text(text, encoding="utf-8")
+    raise SystemExit(0)
+
 
 # Open Persona: enforce access_control for tool valves endpoints.
 #
