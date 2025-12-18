@@ -1,4 +1,4 @@
-# Open Persona — Running Log (through v0.1.1)
+# Open Persona — Running Log (through v0.2.6)
 
 ## What this repo is (current PoC)
 Open Persona is a proof-of-concept stack that plugs **Open WebUI** into **opencode** via a small **sidecar** that speaks an OpenAI-compatible API. The core goals implemented so far are:
@@ -153,11 +153,11 @@ Important note:
 - Opencode runner containers restart when a new config is written (config is read on startup).
 
 ## Milestones / tags
-- `v0.1.1` (commit `99a6e9a`)
-  - Milestone summary: “PoC milestone: per-user runners + per-chat sessions”
-  - Functional state at this tag:
-    - Open WebUI → sidecar integration via OpenAI provider
-    - Open WebUI patch to forward authenticated `user.id`
-    - Sidecar workspace hashing + per-workspace opencode config
-    - Optional per-user runner containers (`RUNNER_MODE=container`)
-    - Per-chat opencode session persistence
+- `v0.1.1` — PoC: per-user runners + per-chat sessions
+- `v0.2.0` — Persona meta toggles + Instrumentl MCP scaffold
+- `v0.2.1` — Per-user provider key forwarding (PoC)
+- `v0.2.2` — Provider keys UI via tool valves (initial)
+- `v0.2.3` — Docs + admin group restricted defaults tool
+- `v0.2.4` — Cookbook documentation
+- `v0.2.5` — AI-focused docs: mental model + agent tasks
+- `v0.2.6` — Secure tool valves endpoints with access_control
