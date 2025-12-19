@@ -1,0 +1,21 @@
+{
+  "name": "open-persona-dev",
+  "private": true,
+  "scripts": {
+    "prepare": "husky install"
+  },
+  "devDependencies": {
+    "husky": "^8.0.0",
+    "lint-staged": "^13.2.0"
+  },
+  "lint-staged": {
+    "*.(js|ts)": [
+      "npx eslint --fix",
+      "git add"
+    ],
+    "*.md": [
+      "prettier --write",
+      "git add"
+    ]
+  }
+}
