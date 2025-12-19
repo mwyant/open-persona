@@ -18,15 +18,22 @@ We use Open WebUI “Tools” as a settings UI:
 - Access-controlled to the `open_persona_admins` group.
 
 ## How keys flow
-Open WebUI → sidecar headers:
+Open WebUI → sidecar headers (forwarded only to allowlisted sidecar hosts):
 - `x-openpersona-openai-api-key`
 - `x-openpersona-anthropic-api-key`
 - `x-openpersona-openrouter-api-key`
 
-Sidecar → opencode runner env:
+Sidecar → opencode runner env (sidecar maps headers to env vars inside the runner):
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 - `OPENROUTER_API_KEY`
+
+Security practices
+- Do NOT commit provider keys to the repository. Use placeholders in examples and store real keys in secure locations:
+  - Local development: keep keys in `~/.env` or a local secret manager (ensure `.env` is in `.gitignore`).
+  - CI: use GitHub Actions secrets (`secrets.*`) and avoid putting keys in workflow files.
+- The sidecar only forwards provider keys to hosts in `OPEN_PERSONA_SIDECAR_ALLOWLIST` (defaults: `open-persona-sidecar,localhost,127.0.0.1`). Configure this env var in the Open WebUI deployment to protect against accidental key exfiltration.
+- Rotate keys immediately if they are ever committed to the repository or exposed.
 
 ## Runner identity
 Runner container name includes a `keySig` so rotating keys gets a new runner:

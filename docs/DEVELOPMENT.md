@@ -15,7 +15,30 @@ Sidecar:
 - `cd services/open-persona-sidecar`
 - `npm install`
 - `npm run build`
-- `npm test`
+- `npm run lint`  # run ESLint
+- `npm run test`  # runs Vitest (test runner)
+
+Single-test example (Vitest):
+
+```bash
+# Run a single test by name
+npm run test -- -t "runs tests"
+# Or run a single file
+npx vitest run src/index.test.ts
+```
+
+Pre-commit hooks (developer setup):
+
+- Install repo dev tools and enable git hooks:
+
+```bash
+# from repo root
+npm install
+# Husky 'prepare' script runs automatically on install; otherwise run:
+# npx husky install
+```
+
+- This will enable the pre-commit hook which runs lint-staged and a simple secret scan.
 
 Instrumentl MCP:
 - `cd services/instrumentl-mcp`
