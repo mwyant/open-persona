@@ -7,8 +7,10 @@ This document lists checks and steps to diagnose "fetch failed" errors in the Op
 - Look for 4xx/5xx responses and trace the upstream URL.
 
 2) Verify sidecar header forwarding
-- `services/open-persona-openwebui/patch_openai_router.py` injects headers when URL contains `open-persona-sidecar`.
-- Ensure the running Open WebUI image contains this patch (image built after Dockerfile changes). If you changed branch, rebuild image.
+- The OpenWebUI patch injects headers only for allowed sidecar hosts (configurable).
+- The patch uses a strict hostname allowlist; the allowlist can be configured via the environment variable `OPEN_PERSONA_SIDECAR_ALLOWLIST` on the Open WebUI side (comma-separated hosts, defaults: `open-persona-sidecar,localhost,127.0.0.1`).
+- `services/open-persona-openwebui/patch_openai_router.py` performs the injection when the destination host matches the allowlist.
+- Ensure the running Open WebUI image contains this patch (image built after Dockerfile changes). If you changed branch, rebuild the image.
 
 3) Tool server connectivity
 - If tools are external (TOOL_SERVER_CONNECTIONS), verify the connections and auth are configured in `config`.
