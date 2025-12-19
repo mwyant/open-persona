@@ -27,8 +27,14 @@ jobs:
         run: |
           set -e
           # Patterns: sk-, AKIA, -----BEGIN PRIVATE KEY-----
-          if git grep -n --extended-regexp "sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN PRIVATE KEY-----" -- . ; then
-            echo 'Potential secrets found in repo'; exit 2
+          # Exclude known files that intentionally contain example patterns.
+          matches=$(git grep -n --extended-regexp "sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN PRIVATE KEY-----" -- . || true)
+          # filter out matches from the workflow file and husky hooks and docs
+          filtered=$(printf "%s" "$matches" | grep -vE '^(\.husky/|\.github/workflows/security-scan.yml|docs/|Documentation.html)' || true)
+          if [ -n "$filtered" ]; then
+            echo 'Potential secrets found in repo'
+            echo "$filtered"
+            exit 2
           else
             echo 'No obvious secrets found'
           fi
