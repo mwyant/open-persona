@@ -1,5 +1,7 @@
 import js from "@eslint/js";
+import js from "@eslint/js";
 import globals from "globals";
+import tsPlugin from "@typescript-eslint/eslint-plugin";
 
 export default [
   js.configs.recommended,
@@ -14,6 +16,24 @@ export default [
     rules: {
       "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
       "no-undef": "off"
+    }
+  },
+  // TypeScript files: use @typescript-eslint parser and recommended rules
+  {
+    files: ["**/*.ts", "**/*.tsx"],
+    ignores: ["node_modules/**"],
+    languageOptions: {
+      parser: "@typescript-eslint/parser",
+      parserOptions: {
+        sourceType: "module",
+        ecmaVersion: 2022
+      }
+    },
+    plugins: {
+      "@typescript-eslint": tsPlugin
+    },
+    rules: {
+      "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
     }
   }
 ];

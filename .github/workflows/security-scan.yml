@@ -1,0 +1,41 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, security/** ]
+  pull_request:
+
+jobs:
+  audit-and-secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Node setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install and audit JS services
+        run: |
+          set -e
+          for d in services/*; do
+            if [ -f "$d/package.json" ]; then
+              echo "Auditing $d"
+              (cd "$d" && npm ci --no-audit && npm audit --audit-level=high)
+            fi
+          done
+      - name: Secret scan (simple patterns)
+        run: |
+          set -e
+          # Patterns: sk-, AKIA, -----BEGIN PRIVATE KEY-----
+          if git grep -n --extended-regexp "sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN PRIVATE KEY-----" -- . ; then
+            echo 'Potential secrets found in repo'; exit 2
+          else
+            echo 'No obvious secrets found'
+          fi
+      - name: Run python unit tests (openwebui)
+        run: |
+          if [ -d "services/open-persona-openwebui/tests" ]; then
+            python3 -m unittest discover -v services/open-persona-openwebui/tests
+          else
+            echo 'No python tests found'
+          fi

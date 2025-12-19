@@ -185,12 +185,6 @@ function extractSystemParts(messages: OpenAIMessage[]): string[] {
     .filter(Boolean);
 }
 
-function extractSystem(messages: OpenAIMessage[]): string | undefined {
-  const systemParts = extractSystemParts(messages);
-  if (!systemParts.length) return undefined;
-  return systemParts.join("\n\n");
-}
-
 function buildPrompt(messages: OpenAIMessage[]): string {
   const nonSystem = messages.filter((m) => m.role !== "system");
   return nonSystem
@@ -747,12 +741,11 @@ app.post("/v1/chat/completions", async (req, res) => {
     const stream = Boolean(body.stream);
 
     const rawMessages = Array.isArray(body.messages) ? (body.messages as OpenAIMessage[]) : [];
-    const system = extractSystem(rawMessages);
     const prompt = buildPrompt(rawMessages);
 
     const workspace = workspaceKeyForRequest(req, body);
     if (process.env.LOG_WORKSPACE_ROUTING === "1") {
-      // eslint-disable-next-line no-console
+       
       console.log(`workspace routing: source=${workspace.source} hash=${workspaceHashForKey(workspace.key)}`);
     }
     const headerOriginalModelId = req.header("x-openpersona-original-model-id")?.trim();
@@ -895,6 +888,6 @@ app.post("/v1/chat/completions", async (req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  // eslint-disable-next-line no-console
+   
   console.log(`open-persona-sidecar listening on :${PORT}`);
 });
