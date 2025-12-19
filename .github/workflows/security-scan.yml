@@ -20,7 +20,7 @@ jobs:
           for d in services/*; do
             if [ -f "$d/package.json" ]; then
               echo "Auditing $d"
-              (cd "$d" && npm ci --no-audit && npm audit --audit-level=high)
+              (cd "$d" && npm install --no-audit --no-fund && npm audit --audit-level=high)
             fi
           done
       - name: Secret scan (simple patterns)
