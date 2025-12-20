@@ -1,4 +1,4 @@
-# AGENTS.md (open-persona)
+# AGENTS.md
 
 ## 1. Build / Lint / Test
 
@@ -113,8 +113,7 @@
   npm audit --production
   yarn audit --check-scripts
   ```
-- **CVE Monitoring**
-  - Subscribe to security alerts via GitHub Dependabot.
+- **CVE Monitoring**n- Subscribe to security alerts via GitHub Dependabot.
   - Periodically run `snyk test` for deeper analysis.
 - **Version Pinning**
   - Keep `package.json` dependencies with caret (`^`) or tilde (`~`) ranges, but lockfile (`yarn.lock`/`package-lock.json`) must be committed.
@@ -144,5 +143,13 @@
 - **Backup Documentation**
   - Store operational runbooks in `ops/runbooks/` and keep them version‑controlled.
 
----  
-*This AGENTS.md serves as the central reference for all agents operating within the open‑persona repository. Update it whenever processes evolve or new tooling is introduced.* 
+---
+*This AGENTS.md serves as the central reference for all agents operating within the open‑persona repository. Update it whenever processes evolve or new tooling is introduced.*
+
+## Subagents
+Sub-agentic processing is crucial. Create specialized subagents in `./agents/` folder with granular prompts (<400 tokens) for:
+- yml expert agent
+- bash expert agent
+- docker expert agent
+- python expert agent
+- etc.
