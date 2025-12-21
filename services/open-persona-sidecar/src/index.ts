@@ -648,8 +648,22 @@ async function ensureRunner(
         "open-persona.workspace": hash,
         "open-persona.keysig": keySig
       },
+      // Use Docker mounts when possible to avoid ambiguous host bind interpretation
+      Mounts: [
+        {
+          Target: "/workspace/open-persona",
+          Source: WORKSPACE_VOLUME,
+          Type: "volume"
+        },
+        {
+          Target: "/data",
+          Source: OPENCODE_DATA_VOLUME,
+          Type: "volume"
+        }
+      ],
       HostConfig: {
         NetworkMode: RUNNER_NETWORK,
+        // Keep Binds as fallback for OPENCODE_DATA_VOLUME if it's a bind
         Binds: binds,
         RestartPolicy: { Name: "unless-stopped" }
       }
