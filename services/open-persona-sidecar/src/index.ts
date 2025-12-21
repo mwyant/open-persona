@@ -292,6 +292,11 @@ function sanitizeAgentName(input: string): string {
 
 function writeFileIfChanged(filePath: string, content: string): boolean {
   try {
+    // ensure parent dir exists
+    ensureDirectoryExists(path.posix.dirname(filePath));
+  } catch {}
+
+  try {
     const existing = fs.readFileSync(filePath, { encoding: "utf8" });
     if (existing === content) return false;
   } catch {
@@ -359,6 +364,16 @@ function buildOpencodeConfig(registry: PersonaRegistry): string {
   }
 
   return JSON.stringify(config, null, 2) + "\n";
+}
+
+function openWebUIConfigPath(directory: string): string {
+  return path.posix.join(directory, 'openwebui.config');
+}
+
+function writeOpenWebUIConfig(directory: string, userId: string | undefined): boolean {
+  const p = openWebUIConfigPath(directory);
+  const content = JSON.stringify({ openwebui_user: userId ?? null, updatedAt: Date.now() }, null, 2) + '\n';
+  return writeFileIfChanged(p, content);
 }
 
 function updateOpencodeProjectConfig(
@@ -584,6 +599,12 @@ async function ensureRunner(
 ): Promise<{ opencodeBaseUrl: string; directory: string; configChanged: boolean }> {
   const directory = workspaceDirectoryForKey(workspaceKey);
   ensureDirectoryExists(directory);
+  // write openwebui.config associating this workspace with the Open WebUI user id
+  try {
+    writeOpenWebUIConfig(directory, workspaceKey);
+  } catch (e) {
+    // ignore write errors
+  }
   const configChanged = updateOpencodeProjectConfig(directory, selectedPersona);
 
   if (!canUseRunnerContainers()) {
