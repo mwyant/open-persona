@@ -624,7 +624,9 @@ async function ensureRunner(
     container = docker.getContainer(name);
     await container.inspect();
   } catch (err) {
-    const binds = [`${OPENCODE_DATA_VOLUME}:/data`, `${WORKSPACE_VOLUME}:/workspace/open-persona`];
+    // Bind the host-mounted workspace directory from the sidecar into the runner container
+    // so the runner sees the same workspace files (use WORKSPACE_ROOT which is mounted by Compose).
+    const binds = [`${OPENCODE_DATA_VOLUME}:/data`, `${WORKSPACE_ROOT}:/workspace/open-persona`];
 
     const env: string[] = [
       `XDG_CONFIG_HOME=/data/config/${hash}/${keySig}`,
