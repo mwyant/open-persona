@@ -1,0 +1,4 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+npx lint-staged
+git diff --cached --name-only --diff-filter=ACM | grep -E "\\.(py|js|ts|md|yaml|yml|env|cfg)$" | xargs -r grep -nE "sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN PRIVATE KEY-----" || true

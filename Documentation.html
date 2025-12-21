@@ -266,6 +266,8 @@
 
   <!-- Markdown renderer. Uses vendored copy; falls back to CDN. -->
   <script src="vendor/marked.min.js"></script>
+  <!-- DOM sanitizer: try vendored copy then CDN -->
+  <script src="vendor/dompurify.min.js"></script>
 
   <script>
     // Edit these if you fork or change default branch.
@@ -294,6 +296,21 @@ const CURRENT_PATH_PREFIX = window.location.pathname.replace(/\/$/, '');
       }
     }
 
+    // DOMPurify loader
+    const DOMPURIFY_CDN = "https://cdn.jsdelivr.net/npm/dompurify@2.4.0/dist/purify.min.js";
+    async function ensureDOMPurifyLoaded() {
+      if (window.DOMPurify) return;
+      try {
+        // if vendor script present it will have defined DOMPurify
+        if (window.DOMPurify) return;
+        await loadScript(DOMPURIFY_CDN);
+        if (!window.DOMPurify) throw new Error('DOMPurify failed to load');
+      } catch (e) {
+        // fallback: allow rendering without DOMPurify but log notice
+        console.warn('DOMPurify not available; rendered Markdown will not be sanitized.');
+      }
+    }
+
     // Manifest of docs in this repo. Keep paths workspace-relative.
     const DOCS = [
       "docs/README.md",
@@ -304,8 +321,10 @@ const CURRENT_PATH_PREFIX = window.location.pathname.replace(/\/$/, '');
       "docs/DEVELOPMENT.md",
       "docs/OPENWEBUI_INTEGRATION.md",
       "docs/PROVIDER_KEYS.md",
-      "docs/PERSONAS.md"
+      "docs/PERSONAS.md",
+      "docs/TROUBLESHOOTING.md"
     ];
+
 
     function titleFromPath(p) {
       const name = p.split("/").slice(-1)[0] || p;
@@ -474,7 +493,13 @@ function resolveRelativeLink(baseDoc, href) {
         }
 
         const text = await res.text();
-        md.innerHTML = marked.parse(text);
+        // Sanitize rendered HTML if DOMPurify is available
+        const raw = marked.parse(text);
+        if (window.DOMPurify) {
+          md.innerHTML = DOMPurify.sanitize(raw);
+        } else {
+          md.innerHTML = raw;
+        }
 
         // If URL is like #docs/README.md#some-anchor, scroll after render.
         const hash = location.hash.replace(/^#/, "");

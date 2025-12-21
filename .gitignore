@@ -35,3 +35,7 @@ data/
 volumes/
 .tmp/
 tmp/
+
+# Ignore coverage
+services/open-persona-sidecar/coverage/
+coverage/

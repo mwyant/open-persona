@@ -40,12 +40,17 @@ Tools:
 - Admin defaults tool (restricted): `open_persona_provider_defaults`
 
 ### Set admin defaults (tool valves)
+
+> Important: Never paste real secret keys into commands that may be kept in shell history or logs. Use placeholders (`sk-...`) in examples and rely on secure mechanisms when automating.
+
 ```bash
 curl -sS -X POST http://localhost:3000/api/v1/tools/id/open_persona_provider_defaults/valves/update \
   -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' \
   --data-raw '{"openai_api_key":"sk-...","anthropic_api_key":"sk-..."}'
 ```
+
+For CI automation, store provider keys in GitHub Secrets and inject them as environment variables in workflow steps rather than embedding them in the workflow YAML.
 
 ### Set per-user keys (user valves)
 ```bash
