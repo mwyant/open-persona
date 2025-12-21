@@ -718,6 +718,26 @@ function renderOpencodeParts(parts: Array<any>, opts?: { personaTemplate?: Perso
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 
+// Request logging middleware (masks sensitive header values)
+app.use((req, _res, next) => {
+  function mask(s: string | undefined) {
+    if (!s) return "";
+    if (s.length <= 10) return "********";
+    return s.slice(0, 6) + "…" + s.slice(-4);
+  }
+  const userHdr = req.header("x-openwebui-user-id") || req.header("x-open-webui-user-id") || req.header("x-openwebui-user") || req.header("x-open-webui-user") || undefined;
+  const auth = req.header("authorization") || undefined;
+  const info = {
+    method: req.method,
+    path: req.path,
+    user: userHdr ? mask(userHdr) : undefined,
+    auth: auth ? mask(auth) : undefined
+  };
+  // use structured JSON logs for easy parsing
+  console.info("http_request", JSON.stringify(info));
+  next();
+});
+
 app.get("/healthz", (_req, res) => {
   res.json({ ok: true });
 });
