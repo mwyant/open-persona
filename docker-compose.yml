@@ -63,7 +63,7 @@ services:
       # Runner mode:
       # - shared: use the single `opencode` service
       # - container: spawn `opencode serve` runner containers (requires docker socket)
-      - RUNNER_MODE=container
+      - RUNNER_MODE=shared
       - LOG_WORKSPACE_ROUTING=0
       - RUNNER_NETWORK=open-persona_default
       - RUNNER_IMAGE=ghcr.io/sst/opencode:latest
