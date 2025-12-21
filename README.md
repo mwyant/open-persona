@@ -57,3 +57,42 @@ npx vitest run src/index.test.ts
 - `services/open-persona-openwebui/` — Open WebUI integration helpers
 - `services/open-persona-sidecar/` — sidecar runtime and routing logic
 
+## Storage mounts and local persistence
+
+By default, development uses local bind mounts under the repository. You can customize locations via environment variables (place them in `.env` or `.env.launcher`):
+
+- `DATA_OPENWEBUI` (default `./data/open-webui`) — Open WebUI persistent data
+- `DATA_OPENCODE` (default `./data/opencode`) — Opencode runtime data
+- `WORKSPACES_DIR` (default `./workspaces`) — Sidecar per-user workspaces
+
+To change mount locations:
+
+1. Copy `.env.example` to `.env` or `.env.launcher` and edit the variables.
+2. Restart the stack:
+
+```bash
+# Using docker compose directly
+docker compose down && docker compose up --build -d
+
+# Or use the Go launcher (recommended for dev):
+./open-persona-launcher/openpersona-launcher --project-dir . --no-browser
+```
+
+Migrating existing workspace data from Docker volumes into the repo (one-time):
+
+```bash
+# Copy data from the Docker volume into ./workspaces
+mkdir -p ./workspaces
+docker run --rm -v open-persona_open-persona-workspaces:/from -v "$PWD/workspaces":/to alpine \
+  sh -c "cp -a /from/. /to/"
+```
+
+Cleaning up workspaces:
+
+```bash
+# Remove local workspaces (destructive)
+rm -rf ./workspaces/*
+```
+
+Note: bind mounts are convenient for development. For production deployments, consider using managed volumes or dedicated storage.
+
