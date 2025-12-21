@@ -10,6 +10,17 @@
 - `docker compose build open-persona-sidecar`
 - `docker compose build openwebui`
 
+## Storage mounts (dev)
+- By default the Compose file uses local bind mounts under the repository. You can override the locations with environment variables in your `.env` or `.env.launcher` file:
+
+  - `DATA_OPENWEBUI` (default `./data/open-webui`) — Open WebUI persistent data
+  - `DATA_OPENCODE` (default `./data/opencode`) — Opencode runtime data
+  - `WORKSPACES_DIR` (default `./workspaces`) — Sidecar per-user workspaces
+
+- If you edit these values, restart the stack (`docker compose down && docker compose up --build -d`) or use the Go launcher which respects the env file.
+
+- See `.env.example` for a template of these variables.
+
 ## Local (non-docker) dev
 Sidecar:
 - `cd services/open-persona-sidecar`
