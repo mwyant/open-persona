@@ -109,7 +109,7 @@ injection = '''
             user_valves = Tools.get_user_valves_by_id_and_user_id(user_tool_id, str(user.id)) or {}
 
             def _clean(v):
-                s = str(v).replace('\n', '').replace('\r', '').strip()
+                s = str(v).replace('\\n', '').replace('\\r', '').strip()
                 # remove other control chars and enforce reasonable max length
                 s = ''.join(ch for ch in s if ch.isprintable())[:4096]
                 return s
