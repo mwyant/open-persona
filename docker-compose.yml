@@ -20,7 +20,7 @@ services:
     ports:
       - "3000:8080"
     volumes:
-      - open-webui:/app/backend/data
+      - "${DATA_OPENWEBUI:-./data/open-webui}:/app/backend/data"
 
   opencode:
     image: ghcr.io/sst/opencode:latest
@@ -35,8 +35,8 @@ services:
       - XDG_CONFIG_HOME=/data/config
       - XDG_STATE_HOME=/data/state
     volumes:
-      - opencode-data:/data
-      - open-persona-workspaces:/workspace/open-persona
+      - "${DATA_OPENCODE:-./data/opencode}:/data"
+      - "${WORKSPACES_DIR:-./workspaces}:/workspace/open-persona"
     working_dir: /workspace/open-persona
 
   instrumentl-mcp:
@@ -74,7 +74,7 @@ services:
       - OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY=${OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY:-}
       - OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY=${OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY:-}
     volumes:
-      - open-persona-workspaces:/workspace/open-persona
+      - "${WORKSPACES_DIR:-./workspaces}:/workspace/open-persona"
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8000:8000"
@@ -82,7 +82,5 @@ services:
       - opencode
       - instrumentl-mcp
 
-volumes:
-  open-webui:
-  opencode-data:
-  open-persona-workspaces:
+# Using local bind mounts for persistent data in the repo directory
+# Volumes not declared here; using ./data and ./workspaces directories
