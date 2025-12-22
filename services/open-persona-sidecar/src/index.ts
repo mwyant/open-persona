@@ -626,7 +626,10 @@ async function ensureRunner(
   } catch (err) {
     // Bind the host-mounted workspace directory from the sidecar into the runner container
     // so the runner sees the same workspace files (use WORKSPACE_ROOT which is mounted by Compose).
-    const binds = [`${OPENCODE_DATA_VOLUME}:/data`, `${WORKSPACE_VOLUME}:/workspace/open-persona`];
+    // Prefer host absolute path if provided via HOST_WORKSPACES_DIR env var (set by launcher/.env),
+    // otherwise fall back to using the named Docker volume WORKSPACE_VOLUME.
+    const hostWorkspaceSrc = process.env.HOST_WORKSPACES_DIR && process.env.HOST_WORKSPACES_DIR.trim() ? process.env.HOST_WORKSPACES_DIR.trim() : WORKSPACE_VOLUME;
+    const binds = [`${OPENCODE_DATA_VOLUME}:/data`, `${hostWorkspaceSrc}:/workspace/open-persona`];
 
     const env: string[] = [
       `XDG_CONFIG_HOME=/data/config/${hash}/${keySig}`,
