@@ -236,8 +236,50 @@ function workspaceHashForKey(key: string): string {
   return crypto.createHash("sha256").update(key, "utf8").digest("hex").slice(0, 16);
 }
 
+const workspaceLookupCache = new Map<string,string>();
+
 function workspaceDirectoryForKey(key: string): string {
-  return path.posix.join(WORKSPACE_ROOT, workspaceHashForKey(key));
+  const hash = workspaceHashForKey(key);
+  const primary = path.posix.join(WORKSPACE_ROOT, hash);
+  try {
+    if (fs.existsSync(primary)) return primary;
+  } catch {}
+
+  // Fallback: check a cache mapping user key -> workspace dir
+  if (workspaceLookupCache.has(key)) {
+    const cached = workspaceLookupCache.get(key)!;
+    try { if (fs.existsSync(cached)) return cached; } catch {}
+    workspaceLookupCache.delete(key);
+  }
+
+  // As a last resort, scan workspaces for an openwebui.config that lists this user id.
+  try {
+    const dirs = fs.readdirSync(WORKSPACE_ROOT, { withFileTypes: true });
+    for (const d of dirs) {
+      if (!d.isDirectory()) continue;
+      const candidate = path.posix.join(WORKSPACE_ROOT, d.name);
+      const cfgPath = path.posix.join(candidate, 'openwebui.config');
+      try {
+        if (!fs.existsSync(cfgPath)) continue;
+        const raw = fs.readFileSync(cfgPath, { encoding: 'utf8' });
+        let parsed: any = null;
+        try { parsed = JSON.parse(raw); } catch { parsed = null; }
+        const uid = parsed?.openwebui_user ?? parsed?.openwebui_user?.id ?? null;
+        if (!uid) continue;
+        if (String(uid) === String(key)) {
+          workspaceLookupCache.set(key, candidate);
+          return candidate;
+        }
+      } catch {
+        continue;
+      }
+    }
+  } catch (e) {
+    // ignore scanning errors
+  }
+
+  // If nothing found, return primary path (may not exist) so higher layers can handle error
+  return primary;
 }
 
 function ensureDirectoryExists(dir: string) {
@@ -291,6 +333,22 @@ function sanitizeAgentName(input: string): string {
 }
 
 function writeFileIfChanged(filePath: string, content: string): boolean {
+  // Safety check: ensure filePath is inside the workspace root to avoid writes
+  // outside of the per-workspace directory. This defends against malformed
+  // agent requests that try to write arbitrary host files.
+  try {
+    const abs = path.resolve(filePath);
+    const root = path.resolve(WORKSPACE_ROOT);
+    if (!abs.startsWith(root + path.sep) && abs !== root) {
+      console.warn(`Refusing to write file outside workspace root: ${filePath}`);
+      return false;
+    }
+  } catch (e) {
+    // If resolution fails, be conservative and refuse write.
+    console.warn(`Failed to resolve path for safety check: ${String(e)}`);
+    return false;
+  }
+
   try {
     // ensure parent dir exists
     ensureDirectoryExists(path.posix.dirname(filePath));
