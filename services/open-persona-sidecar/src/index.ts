@@ -20,25 +20,45 @@ const DEFAULT_ANTHROPIC_API_KEY = process.env.OPEN_PERSONA_DEFAULT_ANTHROPIC_API
 const DEFAULT_OPENROUTER_API_KEY = process.env.OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY;
 
 // Model defaults (configurable via .env)
-const DEFAULT_MAIN_MODEL = process.env.DEFAULT_MAIN_MODEL ?? "gpt-5-mini";
-const DEFAULT_SUBAGENT_MODEL = process.env.DEFAULT_SUBAGENT_MODEL ?? "lmstudio-local/glm-4.6v-flash";
+function canonicalizeModel(id: string | undefined): string | undefined {
+  if (!id) return undefined;
+  const s = String(id).trim();
+  if (!s) return undefined;
+  // If already provider-prefixed, return as-is
+  if (s.includes('/')) return s;
+  // If it looks like a GPT family model name, assume OpenAI provider
+  if (/^gpt[-0-9\.]/i.test(s) || /^gpt/i.test(s)) return `openai/${s}`;
+  // Otherwise return as-is (local provider or already namespaced)
+  return s;
+}
 
-// Optional template workspace hash to source model defaults from
+const DEFAULT_MAIN_MODEL = canonicalizeModel(process.env.DEFAULT_MAIN_MODEL ?? "gpt-5-mini");
+const DEFAULT_SUBAGENT_MODEL = canonicalizeModel(process.env.DEFAULT_SUBAGENT_MODEL ?? "lmstudio-local/glm-4.6v-flash");
+
+// Optional template workspace to source model defaults from
 const TEMPLATE_WORKSPACE_HASH = process.env.TEMPLATE_WORKSPACE_HASH ?? "cb61ed2a6a9882ff";
 let TEMPLATE_MODEL: string | undefined = undefined;
 let TEMPLATE_SMALL_MODEL: string | undefined = undefined;
 
-// Attempt to load top-level model fields from the template workspace's opencode.jsonc
+// Attempt to load template workspace opencode.jsonc to discover configured models
 try {
-  const tplPath = path.posix.join(WORKSPACE_ROOT, TEMPLATE_WORKSPACE_HASH, "opencode.jsonc");
+  const tplPath = path.posix.join(WORKSPACE_ROOT, TEMPLATE_WORKSPACE_HASH, 'opencode.jsonc');
   if (fs.existsSync(tplPath)) {
-    const raw = fs.readFileSync(tplPath, { encoding: "utf8" });
+    const raw = fs.readFileSync(tplPath, { encoding: 'utf8' });
     try {
       const parsed = JSON.parse(raw) as any;
-      if (parsed && typeof parsed === "object") {
-        if (parsed.model && typeof parsed.model === "string") TEMPLATE_MODEL = parsed.model;
-        if (parsed.small_model && typeof parsed.small_model === "string") TEMPLATE_SMALL_MODEL = parsed.small_model;
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.model && typeof parsed.model === 'string') TEMPLATE_MODEL = canonicalizeModel(parsed.model);
+        if (parsed.small_model && typeof parsed.small_model === 'string') TEMPLATE_SMALL_MODEL = canonicalizeModel(parsed.small_model);
       }
+    } catch {
+      // ignore parse errors
+    }
+  }
+} catch (e) {
+  // ignore
+}
+
     } catch {
       // ignore parse errors
     }
@@ -978,8 +998,8 @@ app.post("/v1/chat/completions", async (req, res) => {
 
     // Determine effective models: prefer workspace opencode.jsonc values, then template, then env defaults
     const extracted = extractModelsFromOpencodeFile(runner.directory);
-    const effectiveMainModel = extracted.model ?? TEMPLATE_MODEL ?? DEFAULT_MAIN_MODEL;
-    const effectiveSubagentModel = extracted.small_model ?? TEMPLATE_SMALL_MODEL ?? DEFAULT_SUBAGENT_MODEL;
+    const effectiveMainModel = canonicalizeModel(extracted.model) ?? TEMPLATE_MODEL ?? DEFAULT_MAIN_MODEL;
+    const effectiveSubagentModel = canonicalizeModel(extracted.small_model) ?? TEMPLATE_SMALL_MODEL ?? DEFAULT_SUBAGENT_MODEL;
 
     // Log the model selection for observability
     console.info(
