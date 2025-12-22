@@ -465,6 +465,20 @@ function writeOpenWebUIConfig(directory: string, userId: string | undefined): bo
   return writeFileIfChanged(p, content);
 }
 
+function extractModelsFromOpencodeFile(directory: string): { model?: string; small_model?: string } {
+  const cfg = path.posix.join(directory, 'opencode.jsonc');
+  try {
+    if (!fs.existsSync(cfg)) return {};
+    const raw = fs.readFileSync(cfg, { encoding: 'utf8' });
+    // JSONC may contain comments; use regex to safely extract top-level fields
+    const modelMatch = raw.match(/['"]model['"]\s*:\s*['"]([^'"]+)['"]/);
+    const smallMatch = raw.match(/['"]small_model['"]\s*:\s*['"]([^'"]+)['"]/);
+    return { model: modelMatch ? modelMatch[1] : undefined, small_model: smallMatch ? smallMatch[1] : undefined };
+  } catch (e) {
+    return {};
+  }
+}
+
 function updateOpencodeProjectConfig(
   directory: string,
   selectedPersona: { originalModelId: string; systemPrompt: string; features?: { instrumentl?: boolean } } | undefined
@@ -957,6 +971,17 @@ app.post("/v1/chat/completions", async (req, res) => {
 
     const keys = providerKeysFromRequest(req);
     const runner = await ensureRunner(workspace.key, keys, selectedPersona);
+
+    // Determine effective models: prefer workspace opencode.jsonc values, then template, then env defaults
+    const extracted = extractModelsFromOpencodeFile(runner.directory);
+    const effectiveMainModel = extracted.model ?? TEMPLATE_MODEL ?? DEFAULT_MAIN_MODEL;
+    const effectiveSubagentModel = extracted.small_model ?? TEMPLATE_SMALL_MODEL ?? DEFAULT_SUBAGENT_MODEL;
+
+    // Log the model selection for observability
+    console.info(
+      'model_selection',
+      JSON.stringify({ workspace: runner.directory, requestedModel: model ?? null, effectiveMainModel, effectiveSubagentModel, selectedAgent: selectedPersona ? sanitizeAgentName(selectedPersona.originalModelId) : agent })
+    );
 
     const personaAgentBase = selectedPersona ? sanitizeAgentName(selectedPersona.originalModelId) : undefined;
     const selectedAgentName = personaAgentBase ? (agent === "plan" ? `${personaAgentBase}__plan` : personaAgentBase) : agent;
