@@ -1,0 +1,15 @@
+{
+  "openwebui_user": {
+    "id": "<user-id>",
+    "username": "<username-or-null>",
+    "email": "<email-or-null>",
+    "source": "header|body|token|anonymous",
+    "is_admin": false
+  },
+  "workspace": {
+    "hash": "<workspaceHash>",
+    "createdAt": 0,
+    "updatedAt": 0
+  },
+  "notes": "Optional metadata"
+}

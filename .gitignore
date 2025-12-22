@@ -39,3 +39,8 @@ tmp/
 # Ignore coverage
 services/open-persona-sidecar/coverage/
 coverage/
+
+# Workspaces (private user workspaces — do not commit contents)
+/workspaces/*
+!/workspaces/TEMPLATE/
+!/workspaces/TEMPLATE/**
