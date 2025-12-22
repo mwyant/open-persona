@@ -499,11 +499,31 @@ function updateOpencodeProjectConfig(
   if (updatedRegistry) savePersonaRegistry(directory, registry);
 
   const config = buildOpencodeConfig(registry);
-  // If the workspace already has a hand-authored opencode.jsonc, respect it and do not overwrite.
+  // If the workspace already has a hand-authored opencode.jsonc, merge missing keys
   try {
     if (fs.existsSync(configPath)) {
-      // Do not overwrite existing project config maintained by the workspace owner.
-      return false;
+      try {
+        const raw = fs.readFileSync(configPath, { encoding: "utf8" });
+        const existing = JSON.parse(raw) as any;
+        let changed = false;
+        // Merge top-level model fields if missing
+        if ((existing.model === undefined || existing.model === null) && (config as any).model) {
+          existing.model = (config as any).model;
+          changed = true;
+        }
+        if ((existing.small_model === undefined || existing.small_model === null) && (config as any).small_model) {
+          existing.small_model = (config as any).small_model;
+          changed = true;
+        }
+        if (changed) {
+          // write merged config (do not overwrite other user edits)
+          return writeFileIfChanged(configPath, JSON.stringify(existing, null, 2) + "\n");
+        }
+        return false;
+      } catch (e) {
+        // If parsing fails, avoid clobbering user file; do not overwrite
+        return false;
+      }
     }
   } catch (e) {
     // ignore FS errors and proceed to write
@@ -511,6 +531,7 @@ function updateOpencodeProjectConfig(
 
   return writeFileIfChanged(configPath, config);
 }
+
 
 
 function opencodeUrl(opencodeBaseUrl: string, pathname: string, directory: string): string {
