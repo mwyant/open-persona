@@ -410,8 +410,19 @@ function updateOpencodeProjectConfig(
   if (updatedRegistry) savePersonaRegistry(directory, registry);
 
   const config = buildOpencodeConfig(registry);
+  // If the workspace already has a hand-authored opencode.jsonc, respect it and do not overwrite.
+  try {
+    if (fs.existsSync(configPath)) {
+      // Do not overwrite existing project config maintained by the workspace owner.
+      return false;
+    }
+  } catch (e) {
+    // ignore FS errors and proceed to write
+  }
+
   return writeFileIfChanged(configPath, config);
 }
+
 
 function opencodeUrl(opencodeBaseUrl: string, pathname: string, directory: string): string {
   const url = new URL(pathname, opencodeBaseUrl);
