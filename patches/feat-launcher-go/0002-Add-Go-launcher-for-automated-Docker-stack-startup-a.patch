@@ -1,0 +1,443 @@
+From 844e859ad73b34a6d4d38f864947299bfef03c07 Mon Sep 17 00:00:00 2001
+From: open-persona-bot <bot@local>
+Date: Sat, 20 Dec 2025 20:45:55 -0500
+Subject: [PATCH 2/3] Add Go launcher for automated Docker stack startup and
+ development docs
+
+---
+ docs/STARTUP.md                      | 136 ++++++++++++++++++++
+ open-persona-launcher/DEVELOPMENT.md |  37 ++++++
+ open-persona-launcher/README.md      |  30 +++++
+ open-persona-launcher/go.mod         |   3 +
+ open-persona-launcher/main.go        | 185 +++++++++++++++++++++++++++
+ 5 files changed, 391 insertions(+)
+ create mode 100644 docs/STARTUP.md
+ create mode 100644 open-persona-launcher/DEVELOPMENT.md
+ create mode 100644 open-persona-launcher/README.md
+ create mode 100644 open-persona-launcher/go.mod
+ create mode 100644 open-persona-launcher/main.go
+
+diff --git a/docs/STARTUP.md b/docs/STARTUP.md
+new file mode 100644
+index 0000000..aa29dde
+--- /dev/null
++++ b/docs/STARTUP.md
+@@ -0,0 +1,136 @@
++# Starting open-persona
++
++This document explains how to start the project two ways: (A) the recommended Docker stack and (B) a manual/standalone setup for local development. When the standalone path is manual, a sketch and implementation notes for turning the repo into a self-launching app are included.
++
++**Prerequisites**
++- Docker Engine (20xx+) and Docker Compose (v2 recommended) for the Docker stack.
++- Node 18+ and npm for local Node services (`services/open-persona-sidecar`, `services/instrumentl-mcp`).
++- Python 3.10+ and required Python packages if running the Open WebUI backend locally.
++- A terminal and network access to download images/dependencies.
++
++**Files to know**
++- `docker-compose.yml` (root) - main Docker stack definition.
++- `services/open-persona-sidecar/package.json` - sidecar build/run scripts.
++- `services/instrumentl-mcp/package.json` - instrumentl MCP build/run scripts.
++- `services/open-persona-openwebui/start.sh` - webui entrypoint and seeding helper.
++- `.env` - environment variables used by the Docker compose file.
++
++**A. Docker Stack (recommended)**
++- Start the full stack (build images and run):
++  - `docker compose up --build`
++  - To run detached: `docker compose up --build -d`
++- Rebuild a single service (example):
++  - `docker compose build open-persona-sidecar`
++  - `docker compose build openwebui`
++- Ports and endpoints (defaults from `docker-compose.yml`):
++  - Open WebUI: `http://localhost:3000`
++  - Sidecar health: `http://localhost:8000/healthz`
++  - Instrumentl MCP health: `http://localhost:7000/healthz`
++- Important envs (set in `.env` or the compose environment):
++  - `OPEN_PERSONA_DEFAULT_OPENAI_API_KEY`, `OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY`, `OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY`
++  - The compose file maps the Open WebUI provider to the sidecar: `OPENAI_API_BASE_URLS=http://open-persona-sidecar:8000/v1`.
++- Volumes created by compose persist state:
++  - `open-webui` holds Open WebUI data.
++  - `opencode-data` and `open-persona-workspaces` used by `opencode` and the sidecar.
++- Logs & debugging:
++  - Tail logs: `docker compose logs -f openwebui` or `docker compose logs -f open-persona-sidecar`
++  - List runner containers: `docker ps --filter 'name=open-persona-runner-'`
++
++**B. Standalone / Manual (local dev)**
++This is more manual but useful for debugging individual services.
++
++1) Sidecar (Node service)
++- `cd services/open-persona-sidecar`
++- `npm install`
++- `npm run build`
++- `npm start` (runs `node dist/index.js`)
++- To run in development mode (hot-run): `npm run dev` (requires `tsx`).
++
++2) Instrumentl MCP (Node service)
++- `cd services/instrumentl-mcp`
++- `npm install`
++- `npm run build`
++- `npm start`
++
++3) Open WebUI backend (Python)
++- The Docker image is based on `ghcr.io/open-webui/open-webui:main` and `services/open-persona-openwebui/start.sh` seeds the DB and runs `uvicorn`.
++- To run locally you must follow Open WebUI documentation to install the Python app + deps, then:
++  - Ensure `WEBUI_SECRET_KEY` (or let `start.sh` generate `.webui_secret_key`).
++  - Set envs (see `docker-compose.yml` / `.env`) so the webui talks to the sidecar: e.g. `OPENAI_API_BASE_URLS=http://localhost:8000/v1` and `OPENAI_API_KEYS=sk-open-persona`.
++  - From `services/open-persona-openwebui` run `./start.sh` (ensure required Python deps are installed).
++- Note: running Open WebUI locally requires installing its Python dependencies; the image hides that. See `services/open-persona-openwebui/Dockerfile` for applied patches.
++
++4) Opencode
++- The stack uses the `ghcr.io/sst/opencode:latest` image. For a standalone local dev flow you can run the opencode container independently and point `OPENCODE_BASE_URL` to `http://localhost:4096`.
++
++5) Example minimal local flow
++- Start opencode via Docker: `docker run --rm -p 4096:4096 -v $(pwd):/workspace ghcr.io/sst/opencode:latest serve --hostname 0.0.0.0 --port 4096`
++- Start instrumentl/mcp and sidecar locally per steps above.
++- Start Open WebUI locally via `./start.sh` and ensure envs point to `http://localhost:8000` and `http://localhost:4096`.
++
++**Healthchecks & verification**
++- Sidecar: `curl -fsS http://localhost:8000/healthz`
++- WebUI: `curl -fsS http://localhost:3000/health`
++- Instrumentl: `curl -fsS http://localhost:7000/healthz`
++- If services do not respond, check process logs and ensure ports are free and envs are correct.
++
++**Troubleshooting quick tips**
++- If Open WebUI persisted provider config on first boot, changing ENV provider mappings afterward may not take effect; clear the `open-webui` volume to reinitialize (data loss).
++- For runner containers the sidecar expects Docker socket access when `RUNNER_MODE=container` (see `docker-compose.yml`).
++- Avoid embedding multi-line secrets in HTTP headers; Open WebUI rejects CR/LF.
++
++**C. Sketch: Turn this project into a self-launching "app"**
++Goal: produce a single user-facing installer / launcher that configures envs, runs the required stack, waits for readiness, and (optionally) opens the browser.
++
++1) High-level flow
++- Pre-flight: detect platform (Linux/macOS/Windows), verify Docker Engine and Docker Compose availability.
++- Config: present a minimal UI or CLI prompt to collect required secrets (optional OpenAI/Anthropic keys) and write a secure `.env` file.
++- Launch: run `docker compose up --build -d` (or `docker compose up --build` for foreground) and stream important logs.
++- Wait: poll the health endpoints (`/healthz`, `/health`) until ready or timeout.
++- Post-provision: run optional provisioning (e.g., ensure admin user exists using `services/open-persona-openwebui/start.sh` behavior). Seed scripts (`open_persona_seed.py`) run in container on startup, but the launcher can call `docker compose exec openwebui python /app/backend/open_persona_seed.py` to force idempotent provisioning.
++- Finalize: open browser to `http://localhost:3000` and set launcher to create a system service (systemd on Linux, launchd on macOS, a Windows service/task) to auto-start the stack on boot.
++
++2) Implementation options
++- Simple shell script (POSIX)
++  - Pros: minimal dependencies; easy to inspect.
++  - Cons: less cross-platform; Windows support limited.
++- Node CLI packaged with `pkg` or `nexe`
++  - Pros: cross-platform single binary; easy to add prompts and file edits.
++  - Cons: packaging complexity.
++- Go single binary
++  - Pros: easy cross-compilation; single static binary; good concurrency for waiting & health checks.
++
++3) Example skeleton (POSIX bash pseudo-code)
++- Check Docker: `command -v docker || { echo "Install Docker"; exit 1; }`
++- Write `.env.template` -> `.env` (generate secrets with `head -c 12 /dev/random | base64`)
++- `docker compose up --build -d`
++- Wait loop: `until curl -sfS http://localhost:3000/health; do sleep 1; done`
++- Optionally `xdg-open http://localhost:3000 || open http://localhost:3000`
++- Create `systemd` unit pointing at the script for auto-start (Linux).
++
++4) Example systemd unit (sketch)
++- `/etc/systemd/system/open-persona.service`:
++  - `ExecStart=/usr/local/bin/open-persona-launcher start`
++  - Configure `Restart=always` and `User=` as appropriate.
++
++5) Security & UX considerations
++- Store secrets in `.env` with file permissions `600` and never log them.
++- Let users opt into auto-start; warn about ports and resource usage.
++- Provide an "uninstall" flow that stops the compose stack and optionally removes volumes.
++
++6) Packaging & distribution
++- Provide platform builds (Linux x86_64, arm64, macOS, Windows) and publish checksums.
++- Use native installers (deb/rpm/pkg/msi) for smoother UX or a simple script + binary bundle.
++
++**Next steps / Recommended minimal deliverable**
++- Create a cross-platform launcher in Go that:
++  - Detects Docker, writes a `.env` from a template, runs `docker compose up --build -d`, waits for health endpoints, opens the browser.
++  - Exposes a `--install-service` flag to register a systemd/launchd service.
++- Add a `scripts/launcher` directory with source and packaging instructions.
++- Add tests for the launcher's health-wait logic and `.env` templating.
++
++If you want, I can now:
++- Create `docs/STARTUP.md` (done), or
++- Add a starter `scripts/launcher/launcher.sh` POSIX wrapper and `scripts/launcher/README.md` that implements the simple shell sketch, or
++- Implement a basic Go launcher and packaging manifest.
++
+diff --git a/open-persona-launcher/DEVELOPMENT.md b/open-persona-launcher/DEVELOPMENT.md
+new file mode 100644
+index 0000000..a4f3f71
+--- /dev/null
++++ b/open-persona-launcher/DEVELOPMENT.md
+@@ -0,0 +1,37 @@
++# Development notes — open-persona-launcher
++
++This file documents the steps I followed to implement the Go launcher and how you can develop or extend it.
++
++1) Initialize module
++- `cd /mnt/h/CCI/open-persona-launcher`
++- `go mod init github.com/your-username/open-persona-launcher` (the module name in this repo is kept generic)
++
++2) Files created
++- `main.go` — main application logic
++- `README.md` — user-facing usage
++- `DEVELOPMENT.md` — this file
++
++3) Building locally
++- `go build -o open-persona-launcher ./`
++- Run with `./open-persona-launcher --project-dir /mnt/h/CCI/open-persona`
++
++4) Cross-compilation examples
++- Linux amd64: `GOOS=linux GOARCH=amd64 go build -o open-persona-launcher-linux-amd64 ./`
++- macOS arm64: `GOOS=darwin GOARCH=arm64 go build -o open-persona-launcher-darwin-arm64 ./`
++
++5) How the launcher works (summary)
++- Checks that `docker` binary exists and that `docker compose version` runs.
++- Generates an `.env.launcher` with safe permissions (0600) if no existing env file is provided.
++- Calls `docker compose --project-directory <projectDir> --env-file <envFile> up --build -d`.
++- Waits for health endpoints (Open WebUI `http://localhost:3000/health` and sidecar `http://localhost:8000/healthz`).
++- Opens the default browser on success (unless `--no-browser` set).
++
++6) Extending the launcher
++- Add platform-specific installers (systemd unit or launchd plist) behind a `--install-service` flag.
++- Add more sophisticated env templating and secret storage (use OS keystore integrations).
++- Add progress reporting and incremental log tailing via `docker compose logs --follow`.
++
++7) Security notes
++- Generated env file uses restrictive permissions (0600).
++- Launcher does not log secrets.
++
+diff --git a/open-persona-launcher/README.md b/open-persona-launcher/README.md
+new file mode 100644
+index 0000000..07d7b75
+--- /dev/null
++++ b/open-persona-launcher/README.md
+@@ -0,0 +1,30 @@
++# open-persona-launcher
++
++Lightweight Go launcher for the open-persona project. The launcher automates environment creation, starts the Docker Compose stack, waits for service healthchecks, and (optionally) opens the browser.
++
++This folder contains the launcher source and documentation for building a single cross-platform binary.
++
++Quick usage (after building):
++
++- Build:
++  - `go build -o open-persona-launcher ./` (builds a local binary)
++
++- Run (defaults to the repository path `/mnt/h/CCI/open-persona`):
++  - `./open-persona-launcher`
++  - To specify the open-persona repo path: `./open-persona-launcher --project-dir /path/to/open-persona`
++
++Flags:
++- `--project-dir` Path to the open-persona repo (default: `../open-persona` when running inside the launcher folder)
++- `--env-file` Path to write the generated env file (default: `<project-dir>/.env.launcher`)
++- `--compose-file` Path to the docker-compose.yml (default: `<project-dir>/docker-compose.yml`)
++- `--no-browser` Do not open the browser at the end
++- `--timeout` Healthcheck timeout in seconds (default: 120)
++
++What it does:
++1. Verifies Docker and `docker compose` are available.
++2. Generates a minimal `.env` (or uses existing) to avoid overwriting user files.
++3. Runs `docker compose --project-directory <project-dir> --env-file <env-file> up --build -d`.
++4. Polls health endpoints for Open WebUI and sidecar until ready or timeout.
++5. Optionally opens the browser to `http://localhost:3000`.
++
++Development notes and step-by-step docs are in `DEVELOPMENT.md`.
+diff --git a/open-persona-launcher/go.mod b/open-persona-launcher/go.mod
+new file mode 100644
+index 0000000..863e8f8
+--- /dev/null
++++ b/open-persona-launcher/go.mod
+@@ -0,0 +1,3 @@
++module github.com/mwyant/open-persona-launcher
++
++go 1.20
+diff --git a/open-persona-launcher/main.go b/open-persona-launcher/main.go
+new file mode 100644
+index 0000000..6eeb365
+--- /dev/null
++++ b/open-persona-launcher/main.go
+@@ -0,0 +1,185 @@
++package main
++
++import (
++	"bytes"
++	"context"
++	"crypto/rand"
++	"encoding/base64"
++	"flag"
++	"fmt"
++	"io"
++	"net/http"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"runtime"
++	"strings"
++	"time"
++)
++
++func main() {
++	projectDir := flag.String("project-dir", "../open-persona", "Path to the open-persona repository")
++	envFile := flag.String("env-file", "", "Path to write env file (default: <project-dir>/.env.launcher)")
++	composeFile := flag.String("compose-file", "", "Path to docker-compose.yml (default: <project-dir>/docker-compose.yml)")
++	noBrowser := flag.Bool("no-browser", false, "Do not open the browser when ready")
++	timeout := flag.Int("timeout", 120, "Timeout in seconds for health checks")
++	flag.Parse()
++
++	absProj, err := filepath.Abs(*projectDir)
++	if err != nil {
++		fatal("resolve project dir", err)
++	}
++
++	if *envFile == "" {
++		*envFile = filepath.Join(absProj, ".env.launcher")
++	}
++	if *composeFile == "" {
++		*composeFile = filepath.Join(absProj, "docker-compose.yml")
++	}
++
++	fmt.Println("Project dir:", absProj)
++	fmt.Println("Compose file:", *composeFile)
++	fmt.Println("Env file:", *envFile)
++
++	// 1. Check docker
++	if _, err := exec.LookPath("docker"); err != nil {
++		fatal("docker not found in PATH; please install Docker", err)
++	}
++	// Ensure docker compose is available
++	if err := runCommand(nil, "docker", "compose", "version"); err != nil {
++		fatal("docker compose check failed", err)
++	}
++
++	// 2. Ensure compose file exists
++	if _, err := os.Stat(*composeFile); os.IsNotExist(err) {
++		fatal("compose file not found", fmt.Errorf("%s", *composeFile))
++	}
++
++	// 3. Create env file if missing
++	if _, err := os.Stat(*envFile); os.IsNotExist(err) {
++		fmt.Println("Creating env file:", *envFile)
++		if err := writeEnvFile(*envFile); err != nil {
++			fatal("write env file", err)
++		}
++	} else {
++		fmt.Println("Env file already exists, will use it (not overwriting)")
++	}
++
++	// 4. Launch docker compose
++	fmt.Println("Starting docker compose stack...")
++	upArgs := []string{"compose", "--project-directory", absProj, "--env-file", *envFile, "up", "--build", "-d"}
++	if err := runCommand(nil, "docker", upArgs...); err != nil {
++		fatal("docker compose up failed", err)
++	}
++
++	// 5. Wait for health
++	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeout)*time.Second)
++	defer cancel()
++
++	checks := []string{
++		"http://localhost:3000/health",
++		"http://localhost:8000/healthz",
++	}
++
++	fmt.Println("Waiting for services to become healthy (timeout", *timeout, "s)")
++	for _, url := range checks {
++		if err := waitForHTTP(ctx, url); err != nil {
++			fatal("health check failed for "+url, err)
++		}
++		fmt.Println(url, "OK")
++	}
++
++	fmt.Println("All services healthy.")
++
++	if !*noBrowser {
++		openBrowser("http://localhost:3000")
++	}
++
++	fmt.Println("Launcher finished.")
++}
++
++func fatal(msg string, err error) {
++	fmt.Fprintf(os.Stderr, "ERROR: %s: %v\n", msg, err)
++	os.Exit(1)
++}
++
++func runCommand(env []string, name string, args ...string) error {
++	cmd := exec.Command(name, args...)
++	if env != nil {
++		cmd.Env = append(os.Environ(), env...)
++	}
++	cmd.Stdout = os.Stdout
++	cmd.Stderr = os.Stderr
++	return cmd.Run()
++}
++
++func writeEnvFile(path string) error {
++	// Minimal env contents; do not overwrite existing secrets.
++	content := new(bytes.Buffer)
++	// Add defaults used by docker-compose
++	fmt.Fprintln(content, "# Generated by open-persona-launcher")
++	fmt.Fprintln(content, "OPEN_PERSONA_DEFAULT_OPENAI_API_KEY=")
++	fmt.Fprintln(content, "OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY=")
++	fmt.Fprintln(content, "OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY=")
++	// generate a short random key for WEBUI_SECRET_KEY fallback
++	k, err := randomBase64(12)
++	if err == nil {
++		fmt.Fprintf(content, "WEBUI_SECRET_KEY=%s\n", k)
++	}
++
++	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
++	if err != nil {
++		return err
++	}
++	defer f.Close()
++	_, err = io.Copy(f, content)
++	return err
++}
++
++func randomBase64(n int) (string, error) {
++	b := make([]byte, n)
++	_, err := rand.Read(b)
++	if err != nil {
++		return "", err
++	}
++	return base64.RawURLEncoding.EncodeToString(b), nil
++}
++
++func waitForHTTP(ctx context.Context, url string) error {
++	tick := time.NewTicker(1 * time.Second)
++	defer tick.Stop()
++	client := http.Client{Timeout: 2 * time.Second}
++	for {
++		select {
++		case <-ctx.Done():
++			return ctx.Err()
++		case <-tick.C:
++			resp, err := client.Get(url)
++			if err == nil && resp != nil {
++				io.Copy(io.Discard, resp.Body)
++				resp.Body.Close()
++				if resp.StatusCode >= 200 && resp.StatusCode < 500 {
++					return nil
++				}
++			}
++		}
++	}
++}
++
++func openBrowser(url string) {
++	var cmd *exec.Cmd
++	switch runtime.GOOS {
++	case "linux":
++		cmd = exec.Command("xdg-open", url)
++	case "darwin":
++		cmd = exec.Command("open", url)
++	case "windows":
++		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
++	default:
++		fmt.Println("Open browser not supported on this OS")
++		return
++	}
++	if err := cmd.Start(); err != nil {
++		fmt.Println("Failed to open browser:", err)
++	}
++}
+-- 
+2.47.3
+

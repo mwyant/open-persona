@@ -1,0 +1,121 @@
+From fea15c1991756b9f3e2dc9b605b874e0dbad0438 Mon Sep 17 00:00:00 2001
+From: open-persona-bot <bot@local>
+Date: Sat, 20 Dec 2025 20:50:37 -0500
+Subject: [PATCH 3/3] Document Go launcher and branch in STARTUP.md
+
+---
+ docs/STARTUP.md | 87 ++++++++++++++++++-------------------------------
+ 1 file changed, 32 insertions(+), 55 deletions(-)
+
+diff --git a/docs/STARTUP.md b/docs/STARTUP.md
+index aa29dde..700e630 100644
+--- a/docs/STARTUP.md
++++ b/docs/STARTUP.md
+@@ -1,6 +1,6 @@
+ # Starting open-persona
+ 
+-This document explains how to start the project two ways: (A) the recommended Docker stack and (B) a manual/standalone setup for local development. When the standalone path is manual, a sketch and implementation notes for turning the repo into a self-launching app are included.
++This document explains how to start the project two ways: (A) the recommended Docker stack and (B) a manual/standalone setup for local development. It also documents the new Go-based launcher that automates the startup process and the branch created during development.
+ 
+ **Prerequisites**
+ - Docker Engine (20xx+) and Docker Compose (v2 recommended) for the Docker stack.
+@@ -14,6 +14,7 @@ This document explains how to start the project two ways: (A) the recommended Do
+ - `services/instrumentl-mcp/package.json` - instrumentl MCP build/run scripts.
+ - `services/open-persona-openwebui/start.sh` - webui entrypoint and seeding helper.
+ - `.env` - environment variables used by the Docker compose file.
++- `open-persona-launcher/` - new Go launcher that automates stack startup (see below).
+ 
+ **A. Docker Stack (recommended)**
+ - Start the full stack (build images and run):
+@@ -79,58 +80,34 @@ This is more manual but useful for debugging individual services.
+ - For runner containers the sidecar expects Docker socket access when `RUNNER_MODE=container` (see `docker-compose.yml`).
+ - Avoid embedding multi-line secrets in HTTP headers; Open WebUI rejects CR/LF.
+ 
+-**C. Sketch: Turn this project into a self-launching "app"**
+-Goal: produce a single user-facing installer / launcher that configures envs, runs the required stack, waits for readiness, and (optionally) opens the browser.
+-
+-1) High-level flow
+-- Pre-flight: detect platform (Linux/macOS/Windows), verify Docker Engine and Docker Compose availability.
+-- Config: present a minimal UI or CLI prompt to collect required secrets (optional OpenAI/Anthropic keys) and write a secure `.env` file.
+-- Launch: run `docker compose up --build -d` (or `docker compose up --build` for foreground) and stream important logs.
+-- Wait: poll the health endpoints (`/healthz`, `/health`) until ready or timeout.
+-- Post-provision: run optional provisioning (e.g., ensure admin user exists using `services/open-persona-openwebui/start.sh` behavior). Seed scripts (`open_persona_seed.py`) run in container on startup, but the launcher can call `docker compose exec openwebui python /app/backend/open_persona_seed.py` to force idempotent provisioning.
+-- Finalize: open browser to `http://localhost:3000` and set launcher to create a system service (systemd on Linux, launchd on macOS, a Windows service/task) to auto-start the stack on boot.
+-
+-2) Implementation options
+-- Simple shell script (POSIX)
+-  - Pros: minimal dependencies; easy to inspect.
+-  - Cons: less cross-platform; Windows support limited.
+-- Node CLI packaged with `pkg` or `nexe`
+-  - Pros: cross-platform single binary; easy to add prompts and file edits.
+-  - Cons: packaging complexity.
+-- Go single binary
+-  - Pros: easy cross-compilation; single static binary; good concurrency for waiting & health checks.
+-
+-3) Example skeleton (POSIX bash pseudo-code)
+-- Check Docker: `command -v docker || { echo "Install Docker"; exit 1; }`
+-- Write `.env.template` -> `.env` (generate secrets with `head -c 12 /dev/random | base64`)
+-- `docker compose up --build -d`
+-- Wait loop: `until curl -sfS http://localhost:3000/health; do sleep 1; done`
+-- Optionally `xdg-open http://localhost:3000 || open http://localhost:3000`
+-- Create `systemd` unit pointing at the script for auto-start (Linux).
+-
+-4) Example systemd unit (sketch)
+-- `/etc/systemd/system/open-persona.service`:
+-  - `ExecStart=/usr/local/bin/open-persona-launcher start`
+-  - Configure `Restart=always` and `User=` as appropriate.
+-
+-5) Security & UX considerations
+-- Store secrets in `.env` with file permissions `600` and never log them.
+-- Let users opt into auto-start; warn about ports and resource usage.
+-- Provide an "uninstall" flow that stops the compose stack and optionally removes volumes.
+-
+-6) Packaging & distribution
+-- Provide platform builds (Linux x86_64, arm64, macOS, Windows) and publish checksums.
+-- Use native installers (deb/rpm/pkg/msi) for smoother UX or a simple script + binary bundle.
+-
+-**Next steps / Recommended minimal deliverable**
+-- Create a cross-platform launcher in Go that:
+-  - Detects Docker, writes a `.env` from a template, runs `docker compose up --build -d`, waits for health endpoints, opens the browser.
+-  - Exposes a `--install-service` flag to register a systemd/launchd service.
+-- Add a `scripts/launcher` directory with source and packaging instructions.
+-- Add tests for the launcher's health-wait logic and `.env` templating.
+-
+-If you want, I can now:
+-- Create `docs/STARTUP.md` (done), or
+-- Add a starter `scripts/launcher/launcher.sh` POSIX wrapper and `scripts/launcher/README.md` that implements the simple shell sketch, or
+-- Implement a basic Go launcher and packaging manifest.
++**C. Go launcher (new)**
++A lightweight Go launcher was added at `open-persona-launcher/`. It automates generating a minimal env file, starting the Docker Compose stack, waiting for health endpoints, and optionally opening a browser.
++
++- Location: `open-persona-launcher/`
++- Branch created during development: `feat/launcher-go` (local). To publish the branch: `git push -u origin feat/launcher-go` (requires a GitHub account with push access).
++
++Build & run the launcher
++- From the repo root:
++  - `cd open-persona-launcher`
++  - `go build -o open-persona-launcher ./`
++  - `./open-persona-launcher --project-dir /absolute/path/to/open-persona`
++- Flags:
++  - `--project-dir` Path to the open-persona repo (default: `../open-persona` when running inside the launcher folder)
++  - `--env-file` Path to write the generated env file (default: `<project-dir>/.env.launcher`)
++  - `--compose-file` Path to the docker-compose.yml (default: `<project-dir>/docker-compose.yml`)
++  - `--no-browser` Do not open the browser at the end
++  - `--timeout` Healthcheck timeout in seconds (default: 120)
++
++Notes about the launcher
++- The launcher creates an env file only if one doesn't already exist, and it uses restrictive permissions (0600).
++- It relies on `docker` and `docker compose` being available on PATH and will fail if Docker is not reachable.
++- The launcher is intended as a cross-platform single-binary utility; see `open-persona-launcher/DEVELOPMENT.md` for build and packaging instructions.
++
++**D. Sketch: Turn this project into a self-launching "app"**
++(unchanged) See earlier sections for implementation options, systemd sketch, packaging, and security notes.
++
++**Next steps / Recommended deliverables**
++- Push the `feat/launcher-go` branch to `origin` (requires SSH key or HTTPS token). If you want, push access can be configured with the key at `~/.ssh/gcompute.ssh`.
++- Optionally add `--install-service` support to the launcher to create systemd/launchd units.
++- Add packaging CI to produce cross-platform binaries.
+ 
+-- 
+2.47.3
+

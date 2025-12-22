@@ -1,0 +1,95 @@
+From 1a4b86452c58d1b79df84b60278819cdca1e20c7 Mon Sep 17 00:00:00 2001
+From: open-persona-bot <bot@local>
+Date: Sat, 20 Dec 2025 11:13:36 -0500
+Subject: [PATCH 1/3] Add AGENTS.md and agents subfolder with subagents
+
+---
+ AGENTS.md                     | 20 ++++++++++++++++++--
+ agents/bash_expert_agent.md   |  2 ++
+ agents/docker_expert_agent.md |  2 ++
+ agents/python_expert_agent.md |  2 ++
+ agents/yml_expert_agent.md    |  2 ++
+ 5 files changed, 26 insertions(+), 2 deletions(-)
+ create mode 100644 agents/bash_expert_agent.md
+ create mode 100644 agents/docker_expert_agent.md
+ create mode 100644 agents/python_expert_agent.md
+ create mode 100644 agents/yml_expert_agent.md
+
+diff --git a/AGENTS.md b/AGENTS.md
+index 624f17d..649a8d2 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -1,4 +1,4 @@
+-# AGENTS.md (open-persona)
++# AGENTS.md
+ 
+ ## Build / Lint / Test
+ - Stack (primary): `docker compose up --build`.
+@@ -8,10 +8,26 @@
+ - Single test (sidecar): `npm test -- -t "name"` or `npm test -- src/index.test.ts`.
+ 
+ ## Style / Conventions
+-- Keep changes minimal; don’t reformat unrelated code.
++- Keep changes minimal; don't reformat unrelated code.
+ - TypeScript: explicit types at boundaries; avoid `any`; prefer `unknown` + narrowing.
+ - Naming: `camelCase` vars, `PascalCase` types, `SCREAMING_SNAKE_CASE` constants.
+ - Security: never log secrets; no multi-line secrets in headers (Open WebUI blocks CR/LF).
+ - Open WebUI patches must be backend-only and scoped to `open-persona-sidecar` URLs.
+ - Start from docs: `docs/MENTAL_MODEL.md`, `docs/AGENT_TASKS.md`, `docs/COOKBOOK.md`.
+ - Update `LICENSES.md` when adding dependencies/upstreams.
++
++## Subagents
++Sub-agentic processing is crucial. Create specialized subagents in `./agents/` folder with granular prompts (<400 tokens) for:
++- yml expert agent
++- bash expert agent
++- docker expert agent
++- python expert agent
++- etc.
++
++## Subagents
++Sub-agentic processing is crucial. Create specialized subagents in `./agents/` folder with granular prompts (<400 tokens) for:
++- yml expert agent
++- bash expert agent
++- docker expert agent
++- python expert agent
++- etc.
+\ No newline at end of file
+diff --git a/agents/bash_expert_agent.md b/agents/bash_expert_agent.md
+new file mode 100644
+index 0000000..5845afc
+--- /dev/null
++++ b/agents/bash_expert_agent.md
+@@ -0,0 +1,2 @@
++# bash expert agent
++Specializes in bash scripting and command-line operations. Can write, debug, and optimize bash scripts. Handles file operations, process management, and system administration tasks. Understands shell syntax, variables, loops, conditionals, and functions. Can execute commands and interpret output. Focuses on security best practices and avoiding command injection vulnerabilities. Returns clear, concise scripts with comments. Always validates input and handles errors gracefully. Can process multiple commands in a sequence.
+\ No newline at end of file
+diff --git a/agents/docker_expert_agent.md b/agents/docker_expert_agent.md
+new file mode 100644
+index 0000000..40a69da
+--- /dev/null
++++ b/agents/docker_expert_agent.md
+@@ -0,0 +1,2 @@
++# docker expert agent
++Specializes in Docker operations. Can create, build, run, and manage Docker containers and images. Understands Dockerfile syntax, multi-stage builds, and container networking. Handles volume mounting, environment variables, and Docker Compose files. Can troubleshoot common Docker issues and optimize container images. Returns clear, concise Docker commands and configurations. Always validates Dockerfile syntax and image compatibility. Can process multiple Docker operations in a batch.
+\ No newline at end of file
+diff --git a/agents/python_expert_agent.md b/agents/python_expert_agent.md
+new file mode 100644
+index 0000000..7a71f1a
+--- /dev/null
++++ b/agents/python_expert_agent.md
+@@ -0,0 +1,2 @@
++# python expert agent
++Specializes in Python programming. Can write, debug, and optimize Python code. Understands Python syntax, data structures, and libraries. Handles file I/O, error handling, and modular programming. Returns clean, readable Python code with proper indentation and documentation. Always validates syntax and handles edge cases. Can process multiple Python files in a batch. Focuses on security best practices and avoiding common pitfalls.
+\ No newline at end of file
+diff --git a/agents/yml_expert_agent.md b/agents/yml_expert_agent.md
+new file mode 100644
+index 0000000..33b2abf
+--- /dev/null
++++ b/agents/yml_expert_agent.md
+@@ -0,0 +1,2 @@
++# yml expert agent
++Specializes in YML file processing. Given a YML file, can parse it, validate syntax, and extract/modify specific fields. Can also convert YML to JSON and vice versa. Focuses on proper indentation and structure. Handles nested objects and arrays. Returns error messages for invalid syntax. Can process multiple YML files in a batch. Avoids modifying files unless explicitly requested. Always returns a valid YML structure if successful.
+\ No newline at end of file
+-- 
+2.47.3
+
