@@ -19,6 +19,34 @@ const DEFAULT_OPENAI_API_KEY = process.env.OPEN_PERSONA_DEFAULT_OPENAI_API_KEY;
 const DEFAULT_ANTHROPIC_API_KEY = process.env.OPEN_PERSONA_DEFAULT_ANTHROPIC_API_KEY;
 const DEFAULT_OPENROUTER_API_KEY = process.env.OPEN_PERSONA_DEFAULT_OPENROUTER_API_KEY;
 
+// Model defaults (configurable via .env)
+const DEFAULT_MAIN_MODEL = process.env.DEFAULT_MAIN_MODEL ?? "gpt-5-mini";
+const DEFAULT_SUBAGENT_MODEL = process.env.DEFAULT_SUBAGENT_MODEL ?? "lmstudio-local/glm-4.6v-flash";
+
+// Optional template workspace hash to source model defaults from
+const TEMPLATE_WORKSPACE_HASH = process.env.TEMPLATE_WORKSPACE_HASH ?? "cb61ed2a6a9882ff";
+let TEMPLATE_MODEL: string | undefined = undefined;
+let TEMPLATE_SMALL_MODEL: string | undefined = undefined;
+
+// Attempt to load top-level model fields from the template workspace's opencode.jsonc
+try {
+  const tplPath = path.posix.join(WORKSPACE_ROOT, TEMPLATE_WORKSPACE_HASH, "opencode.jsonc");
+  if (fs.existsSync(tplPath)) {
+    const raw = fs.readFileSync(tplPath, { encoding: "utf8" });
+    try {
+      const parsed = JSON.parse(raw) as any;
+      if (parsed && typeof parsed === "object") {
+        if (parsed.model && typeof parsed.model === "string") TEMPLATE_MODEL = parsed.model;
+        if (parsed.small_model && typeof parsed.small_model === "string") TEMPLATE_SMALL_MODEL = parsed.small_model;
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+} catch (e) {
+  // ignore
+}
+
 type OpenAIMessage = {
   role: "system" | "user" | "assistant" | "tool";
   content: unknown;
@@ -367,6 +395,9 @@ function writeFileIfChanged(filePath: string, content: string): boolean {
 function buildOpencodeConfig(registry: PersonaRegistry): string {
   const config: any = {
     $schema: "https://opencode.ai/config.json",
+    // Model configuration: prefer template values, then env defaults
+    model: TEMPLATE_MODEL ?? DEFAULT_MAIN_MODEL,
+    small_model: TEMPLATE_SMALL_MODEL ?? DEFAULT_SUBAGENT_MODEL,
     permission: {
       edit: "allow",
       bash: "allow",
