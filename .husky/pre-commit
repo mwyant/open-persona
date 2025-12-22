@@ -2,3 +2,15 @@
 . "$(dirname "$0")/_/husky.sh"
 npx lint-staged
 git diff --cached --name-only --diff-filter=ACM | grep -E "\\.(py|js|ts|md|yaml|yml|env|cfg)$" | xargs -r grep -nE "sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN PRIVATE KEY-----" || true
+
+# Prevent accidental commits under workspaces/ except workspaces/TEMPLATE/
+staged_workspaces=$(git diff --cached --name-only --diff-filter=ACM | grep '^workspaces/' || true)
+if [ -n "$staged_workspaces" ]; then
+  filtered=$(printf "%s\n" "$staged_workspaces" | grep -v '^workspaces/TEMPLATE/')
+  if [ -n "$filtered" ]; then
+    echo "\nError: Attempting to add/modify files under 'workspaces/'. Only 'workspaces/TEMPLATE/' may be tracked.\n" >&2
+    printf "%s\n" "$filtered" >&2
+    echo "Aborting commit." >&2
+    exit 1
+  fi
+fi
