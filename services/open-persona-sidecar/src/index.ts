@@ -575,16 +575,20 @@ async function opencodePrompt(
   sessionID: string,
   agent: string,
   prompt: string,
-  system?: string
+  system?: string,
+  modelOverride?: string
 ) {
+  const body: any = {
+    agent,
+    system,
+    parts: [{ type: "text", text: prompt }]
+  };
+  if (modelOverride) body.model_override = modelOverride;
+
   const res = await fetch(opencodeUrl(opencodeBaseUrl, `/session/${encodeURIComponent(sessionID)}/message`, directory), {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      agent,
-      system,
-      parts: [{ type: "text", text: prompt }]
-    })
+    body: JSON.stringify(body)
   });
 
   if (!res.ok) {
@@ -1011,7 +1015,7 @@ app.post("/v1/chat/completions", async (req, res) => {
 
     let opencodeResult: { info: unknown; parts: Array<any> };
     try {
-      opencodeResult = await opencodePrompt(runner.opencodeBaseUrl, runner.directory, sessionID, selectedAgentName, prompt, forwardedSystem);
+      opencodeResult = await opencodePrompt(runner.opencodeBaseUrl, runner.directory, sessionID, selectedAgentName, prompt, forwardedSystem, /*modelOverride=*/ undefined);
     } catch (err) {
       // If the session expired/was lost (runner restart), recreate once.
       if (!chatId) throw err;
@@ -1025,7 +1029,7 @@ app.post("/v1/chat/completions", async (req, res) => {
         return created.id;
       });
 
-      opencodeResult = await opencodePrompt(runner.opencodeBaseUrl, runner.directory, sessionID, selectedAgentName, prompt, forwardedSystem);
+      opencodeResult = await opencodePrompt(runner.opencodeBaseUrl, runner.directory, sessionID, selectedAgentName, prompt, forwardedSystem, /*modelOverride*/ undefined);
     }
 
     const content = renderOpencodeParts(opencodeResult.parts, { personaTemplate: persona.template });
@@ -1033,12 +1037,20 @@ app.post("/v1/chat/completions", async (req, res) => {
     const created = Math.floor(Date.now() / 1000);
     const responseID = `chatcmpl_${sessionID}`;
 
-    if (!stream) {
+  if (!stream) {
+      // Attach model_details metadata so Open WebUI can show the resolved models
+      const model_details = {
+        model: effectiveMainModel,
+        small_model: effectiveSubagentModel,
+        resolved_from: extracted.model ? 'workspace' : (TEMPLATE_MODEL ? 'template' : 'env')
+      };
+
       res.json({
         id: responseID,
         object: "chat.completion",
         created,
         model: model ?? `open-persona/${agent}`,
+        model_details,
         choices: [
           {
             index: 0,
@@ -1049,20 +1061,30 @@ app.post("/v1/chat/completions", async (req, res) => {
       });
       return;
     }
-
+    
     res.setHeader("content-type", "text/event-stream");
     res.setHeader("cache-control", "no-cache");
     res.setHeader("connection", "keep-alive");
+
+    const model_details = {
+      model: effectiveMainModel,
+      small_model: effectiveSubagentModel,
+      resolved_from: extracted.model ? 'workspace' : (TEMPLATE_MODEL ? 'template' : 'env')
+    };
 
     const chunkEnvelope = (delta: Record<string, unknown>, finish_reason: string | null) => ({
       id: responseID,
       object: "chat.completion.chunk",
       created,
       model: model ?? `open-persona/${agent}`,
+      model_details,
       choices: [{ index: 0, delta, finish_reason }]
     });
 
+    // Send an initial metadata chunk containing model_details
+    res.write(`data: ${JSON.stringify(chunkEnvelope({ metadata: model_details }, null))}\n\n`);
     res.write(`data: ${JSON.stringify(chunkEnvelope({ role: "assistant" }, null))}\n\n`);
+
 
     // Send content in manageable chunks.
     const chunkSize = 1500;
