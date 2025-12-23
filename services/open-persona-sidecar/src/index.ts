@@ -1140,7 +1140,7 @@ app.post('/admin/workspace-tools', express.json(), async (req, res) => {
     let cmd = '';
     if (tool === 'docker' || tool === 'docker-compose' || tool === 'which') {
       // Proxy to host binary
-      const safe = args.map(a => String(a).replace(/"/g, '"')).join(' ');
+      const safe = args.map((a: any) => String(a).replace(/"/g, '"')).join(' ');
       cmd = `${tool} ${safe}`.trim();
     } else {
       // Run in a temporary container that has the requested tool
@@ -1154,7 +1154,7 @@ app.post('/admin/workspace-tools', express.json(), async (req, res) => {
         jq: 'stedolan/jq:alpine'
       };
       const image = imageMap[tool] || 'alpine:latest';
-      const safeArgs = args.map(a => String(a).replace(/"/g, '"')).join(' ');
+      const safeArgs = args.map((a: any) => String(a).replace(/"/g, '"')).join(' ');
       // Mount the host workspace directory into the container at the same path
       cmd = `docker run --rm -v ${hostDir}:${hostDir} -w ${path.posix.join(hostDir, workspaceKey)} ${image} ${tool} ${safeArgs}`.trim();
     }
