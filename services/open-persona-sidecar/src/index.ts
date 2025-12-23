@@ -1160,7 +1160,6 @@ app.post('/admin/workspace-tools', express.json(), async (req, res) => {
       cmd = `docker run --rm -v ${hostDir}:${hostDir} -w ${path.posix.join(hostDir, workspaceKey)} ${image} ${tool} ${safeArgs}`.trim();
     }
 
-    const { exec } = require('child_process');
     exec(cmd, { maxBuffer: 10 * 1024 * 1024 }, (err: any, stdout: string, stderr: string) => {
       if (err) {
         return res.status(500).json({ error: String(err), stdout, stderr });
