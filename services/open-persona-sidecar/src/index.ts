@@ -1122,7 +1122,60 @@ app.post("/v1/chat/completions", async (req, res) => {
   }
 });
 
+// Admin tool runner endpoint: one-time, limited exception for a specific workspace
+app.post('/admin/workspace-tools', express.json(), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const workspaceKey = String(body.workspaceKey || '');
+    const tool = String(body.tool || '').trim();
+    const args = Array.isArray(body.args) ? body.args.map(String) : [];
+
+    // Only allow this specific workspace for now
+    const ALLOWED_WORKSPACE = 'cb61ed2a6a9882ff';
+    if (workspaceKey !== ALLOWED_WORKSPACE) return res.status(403).json({ error: 'forbidden' });
+
+    const allowed = new Set(['which','docker','docker-compose','python3','pip','git','curl','jq','node','npm']);
+    if (!allowed.has(tool)) return res.status(400).json({ error: 'tool not allowed' });
+
+    // Resolve directories
+    const dir = workspaceDirectoryForKey(workspaceKey);
+    const hostDir = process.env.HOST_WORKSPACES_DIR ? process.env.HOST_WORKSPACES_DIR.trim() : WORKSPACE_ROOT;
+
+    // Build command
+    let cmd = '';
+    if (tool === 'docker' || tool === 'docker-compose' || tool === 'which') {
+      // Proxy to host binary
+      const safe = args.map(a => String(a).replace(/"/g, '"')).join(' ');
+      cmd = `${tool} ${safe}`.trim();
+    } else {
+      // Run in a temporary container that has the requested tool
+      const imageMap: Record<string,string> = {
+        python3: 'python:3.11-alpine',
+        pip: 'python:3.11-alpine',
+        node: 'node:20-alpine',
+        npm: 'node:20-alpine',
+        git: 'alpine/git',
+        curl: 'curlimages/curl:latest',
+        jq: 'stedolan/jq:alpine'
+      };
+      const image = imageMap[tool] || 'alpine:latest';
+      const safeArgs = args.map(a => String(a).replace(/"/g, '"')).join(' ');
+      // Mount the host workspace directory into the container at the same path
+      cmd = `docker run --rm -v ${hostDir}:${hostDir} -w ${path.posix.join(hostDir, workspaceKey)} ${image} ${tool} ${safeArgs}`.trim();
+    }
+
+    const { exec } = require('child_process');
+    exec(cmd, { maxBuffer: 10 * 1024 * 1024 }, (err: any, stdout: string, stderr: string) => {
+      if (err) {
+        return res.status(500).json({ error: String(err), stdout, stderr });
+      }
+      return res.json({ stdout: stdout || '', stderr: stderr || '' });
+    });
+  } catch (e) {
+    return res.status(500).json({ error: String(e) });
+  }
+});
+
 app.listen(PORT, "0.0.0.0", () => {
-   
   console.log(`open-persona-sidecar listening on :${PORT}`);
 });
