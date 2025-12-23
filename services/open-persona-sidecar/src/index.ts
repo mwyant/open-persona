@@ -4,6 +4,7 @@ import path from "node:path";
 
 import Docker from "dockerode";
 import express from "express";
+import { exec } from 'child_process';
 
 const OPENCODE_BASE_URL = process.env.OPENCODE_BASE_URL ?? "http://opencode:4096";
 const PORT = Number(process.env.PORT ?? "8000");
