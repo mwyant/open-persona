@@ -51,13 +51,7 @@ try {
         if (parsed.model && typeof parsed.model === 'string') TEMPLATE_MODEL = canonicalizeModel(parsed.model);
         if (parsed.small_model && typeof parsed.small_model === 'string') TEMPLATE_SMALL_MODEL = canonicalizeModel(parsed.small_model);
       }
-    } catch {
-      // ignore parse errors
-    }
-  }
-} catch (e) {
-  // ignore
-}
+    
 
     } catch {
       // ignore parse errors
@@ -66,6 +60,7 @@ try {
 } catch (e) {
   // ignore
 }
+
 
 type OpenAIMessage = {
   role: "system" | "user" | "assistant" | "tool";
