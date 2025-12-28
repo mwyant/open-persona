@@ -44,3 +44,8 @@ coverage/
 /workspaces/*
 !/workspaces/TEMPLATE/
 !/workspaces/TEMPLATE/**
+
+# admin session helper keys (local-only)
+/scripts/*.key
+*.pem
+/tmp/openpersona_admin_key*

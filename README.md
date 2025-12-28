@@ -8,6 +8,7 @@ Today this repo is a **working proof of concept**:
 - Open WebUI speaks to a local provider endpoint (`open-persona-sidecar`) using the standard “OpenAI provider” workflow.
 - The sidecar routes each Open WebUI user to an isolated opencode workspace (and runner container).
 - Personas are Open WebUI Models; persona metadata is forwarded to opencode.
+- Open Persona Sidecar uses: ./services/open-persona-sidecar/index.ts for preferences, including .env defaults
 
 Start here:
 - `docs/README.md`
@@ -17,9 +18,14 @@ Start here:
 Milestones are tagged (`v0.x.y`).
 
 ## Quickstart
+Launch:
+```bash
+open-persona-launcher/openpersona-launcher
+```
+- To get a full build and start/restart service.
 
+OR:
 - Start the stack with Docker Compose:
-
 ```bash
 docker compose up --build
 ```
